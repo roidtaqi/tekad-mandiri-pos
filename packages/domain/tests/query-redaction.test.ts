@@ -46,8 +46,13 @@ describe("Permission-Aware Query Redaction", () => {
 
   it("F. role label OWNER without permission -> absent", () => {
     // Role is cosmetic at this layer; only the permission set matters.
-    const permissions = new Set(["workspace.pos.access"]);
-    const result = selectPermissionBoundFields(permissions, [
+    const ownerLabeledActor = {
+      business_id: "test-biz",
+      user_id: "test-user",
+      primary_role: "OWNER",
+      permissions: new Set(["workspace.pos.access"])
+    };
+    const result = selectPermissionBoundFields(ownerLabeledActor.permissions, [
       { key: "audit", required_permissions: ["audit.sensitive.read"], value: "secret" }
     ]);
     expect("audit" in result).toBe(false);

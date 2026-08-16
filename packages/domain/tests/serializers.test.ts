@@ -52,7 +52,14 @@ const pollutedProductRow = {
   selling_price: 100,
   stock: 500,
   cash_expected: 1000,
-  audit_secret: "sssh"
+  audit_secret: "sssh",
+  session_secret_hash: "must-never-leak"
+};
+
+const nullBrandProductRow = {
+  ...pollutedProductRow,
+  brand_id: null,
+  brand_name: null,
 };
 
 const pollutedUnitRow = {
@@ -97,9 +104,21 @@ describe("Catalog Serializers & Redaction Boundary", () => {
     ];
     
     expect(Object.keys(res).sort()).toEqual(expectedKeys.sort());
+    expect(Object.keys(res.category).sort()).toEqual(["id", "name"].sort());
+    expect(res.brand).not.toBeNull();
+    if (res.brand) {
+        expect(Object.keys(res.brand).sort()).toEqual(["id", "name"].sort());
+    }
+
     expect("cost_snapshot" in res).toBe(false);
     expect("margin" in res).toBe(false);
     expect("stock" in res).toBe(false);
+    expect(Object.hasOwn(res, "session_secret_hash")).toBe(false);
+  });
+
+  it("serializeProductListItem handles null brand correctly", () => {
+    const res = serializeProductListItem(baseCtx, nullBrandProductRow);
+    expect(res.brand).toBeNull();
   });
 
   it("serializeProductDetail drops unknown/polluted properties in all nested layers", () => {
@@ -111,6 +130,11 @@ describe("Catalog Serializers & Redaction Boundary", () => {
       "category", "brand", "units"
     ];
     expect(Object.keys(res).sort()).toEqual(expectedTopKeys.sort());
+    expect(Object.keys(res.category).sort()).toEqual(["id", "name"].sort());
+    expect(res.brand).not.toBeNull();
+    if (res.brand) {
+        expect(Object.keys(res.brand).sort()).toEqual(["id", "name"].sort());
+    }
 
     const unit = res.units[0];
     expect(unit).toBeDefined();
@@ -134,6 +158,7 @@ describe("Catalog Serializers & Redaction Boundary", () => {
 
     // Proof broad permissions do not widen DTO
     expect("selling_price" in res).toBe(false);
+    expect(Object.hasOwn(res, "session_secret_hash")).toBe(false);
     expect("margin" in unit).toBe(false);
     expect("audit_secret" in barcode).toBe(false);
   });

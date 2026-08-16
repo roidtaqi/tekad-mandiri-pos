@@ -67,6 +67,11 @@ describeWithPostgres("Query Redaction & Security Integration", () => {
   const puId = randomUUID();
   const bcId = randomUUID();
 
+  // Other business identifiers
+  const bId2 = randomUUID();
+  const cId2 = randomUUID();
+  const pId2 = randomUUID();
+
   // Test setup
   beforeAll(async () => {
     await client?.query(`INSERT INTO core.businesses (id, name, currency_code, timezone, status) VALUES ($1, 'Biz1', 'IDR', 'UTC', 'ACTIVE')`, [bId]);
@@ -86,11 +91,8 @@ describeWithPostgres("Query Redaction & Security Integration", () => {
     `, [bcId, bId, puId]);
     
     // Other business
-    const bId2 = randomUUID();
     await client?.query(`INSERT INTO core.businesses (id, name, currency_code, timezone, status) VALUES ($1, 'Biz2', 'IDR', 'UTC', 'ACTIVE')`, [bId2]);
-    const cId2 = randomUUID();
     await client?.query(`INSERT INTO catalog.categories (id, business_id, name, status) VALUES ($1, $2, 'Cat2', 'ACTIVE')`, [cId2, bId2]);
-    const pId2 = randomUUID();
     await client?.query(`
       INSERT INTO catalog.products (id, business_id, sku, name, category_id, base_unit_code, track_inventory, status)
       VALUES ($1, $2, 'SKU-B2', 'Product B2', $3, 'BOX', false, 'ACTIVE')
@@ -200,6 +202,12 @@ describeWithPostgres("Query Redaction & Security Integration", () => {
     const serverTime = "2026-08-17T00:00:00.000Z";
     const res = await buildPosCatalogBootstrapProjection(posCtx, executor, serverTime);
 
+    const expectedTopKeys = [
+      "bootstrap_version", "business_id", "server_time", 
+      "products", "product_units", "barcodes"
+    ];
+    expect(Object.keys(res).sort()).toEqual(expectedTopKeys.sort());
+
     expect(res.products).toHaveLength(1);
     
     const expectedProductKeys = [
@@ -214,9 +222,21 @@ describeWithPostgres("Query Redaction & Security Integration", () => {
     expect(u).toBeDefined();
     if (!u) throw new Error("Missing unit");
 
+    const expectedUnitKeys = [
+      "id", "product_id", "unit_code", "display_name", "conversion_factor",
+      "can_sell", "can_purchase", "allow_decimal_qty",
+      "status", "version", "updated_at"
+    ];
+    expect(Object.keys(u).sort()).toEqual(expectedUnitKeys.sort());
+
     const b = res.barcodes[0];
     expect(b).toBeDefined();
     if (!b) throw new Error("Missing barcode");
+
+    const expectedBarcodeKeys = [
+      "id", "product_unit_id", "barcode", "is_internal", "status", "deactivated_at"
+    ];
+    expect(Object.keys(b).sort()).toEqual(expectedBarcodeKeys.sort());
 
     // Proof conversions remain intact
     expect(typeof u.conversion_factor).toBe("string");
@@ -224,11 +244,44 @@ describeWithPostgres("Query Redaction & Security Integration", () => {
   });
 
   it("6. another Business remains isolated", async () => {
-    const bId2Ctx = { business_id: "non-existent", user_id: randomUUID(), permissions: new Set(["product.read"]) };
+    const bId2Ctx = { business_id: bId2, user_id: randomUUID(), permissions: new Set(["product.read"]) };
     
-    const res = await listProducts(bId2Ctx, executor, {});
-    expect(res.items).toHaveLength(0);
+    // Business A sees only Product A
+    const resA = await listProducts(baseCtx, executor, {});
+    expect(resA.items).toHaveLength(1);
+    const pA = resA.items[0];
+    expect(pA).toBeDefined();
+    if (!pA) throw new Error("Missing product");
+    expect(pA.id).toBe(pId);
     
-    await expect(getProductDetail(bId2Ctx, executor, pId)).rejects.toThrow(CatalogError);
+    // Business A cannot see Category B
+    const catA = await listCategories(baseCtx, executor);
+    expect(catA).toHaveLength(1);
+    const c0 = catA[0];
+    expect(c0).toBeDefined();
+    if (!c0) throw new Error("Missing category");
+    expect(c0.id).toBe(cId);
+
+    await expect(getProductDetail(baseCtx, executor, pId2)).rejects.toThrow(CatalogError);
+
+    // Business B sees only Product B
+    const resB = await listProducts(bId2Ctx, executor, {});
+    expect(resB.items).toHaveLength(1);
+    const pB = resB.items[0];
+    expect(pB).toBeDefined();
+    if (!pB) throw new Error("Missing product");
+    expect(pB.id).toBe(pId2);
+  });
+
+  it("7. OWNER role label without permission denies Product query", async () => {
+    const ownerLabeledActor = {
+      business_id: bId,
+      user_id: randomUUID(),
+      primary_role: "OWNER",
+      permissions: new Set()
+    };
+
+    // @ts-ignore: testing unsafe struct extension
+    await expect(listProducts(ownerLabeledActor, executor, {})).rejects.toThrow(CatalogError);
   });
 });
