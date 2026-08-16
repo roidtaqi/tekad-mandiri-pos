@@ -437,21 +437,24 @@ describeWithPostgres("M1-002A: Identity Core Schema and System Roles", () => {
     await expect(client?.query(`DELETE FROM core.businesses WHERE id = $1`, [businessId])).rejects.toThrow();
   });
 
-  it("Y. permission table contains zero seeded permissions in M1-002A", async () => {
+  it("Y. permission table contains exactly 86 seeded permissions", async () => {
     const res = await client?.query(`SELECT * FROM identity.permissions`);
-    expect(res?.rows.length).toBe(0);
+    expect(res?.rows.length).toBe(86);
   });
 
-  it("Z. role_permissions contains zero preset mappings in M1-002A", async () => {
+  it("Z. role_permissions contains exactly 163 preset mappings", async () => {
     const res = await client?.query(`SELECT * FROM identity.role_permissions`);
-    expect(res?.rows.length).toBe(0);
+    expect(res?.rows.length).toBe(163);
   });
 
-  it("AA. migration history includes 000001 and the new M1-002A migration", async () => {
+  it("AA. migration history includes 000001, 000002, and 000003", async () => {
     const res = await client?.query(`SELECT filename FROM public.kastur_schema_migrations ORDER BY version ASC`);
     const filenames = res?.rows.map(r => r.filename) ?? [];
-    expect(filenames).toContain("000001_create_core_businesses_locations.sql");
-    expect(filenames).toContain("000002_create_identity_core_schema.sql");
+    expect(filenames).toEqual([
+      "000001_create_core_businesses_locations.sql",
+      "000002_create_identity_core_schema.sql",
+      "000003_seed_permission_catalog_role_presets.sql"
+    ]);
   });
 
   it("AB. rerunning migration applies nothing twice", async () => {
