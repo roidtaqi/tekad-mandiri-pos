@@ -202,3 +202,75 @@ export async function listBrands(
   );
   return res.rows;
 }
+
+export async function buildPosCatalogBootstrapProjection(
+  ctx: ActorContext,
+  executor: SqlExecutor,
+  serverTime: string
+): Promise<import("@kastur/contracts").PosCatalogBootstrapSnapshot> {
+  if (!ctx.permissions.has("workspace.pos.access")) {
+    throw new CatalogError("PERMISSION_DENIED", "Requires workspace.pos.access permission");
+  }
+
+  const pRes = await executor.query(`
+    SELECT 
+      id, sku, name, base_unit_code, track_inventory, status, version, updated_at
+    FROM catalog.products
+    WHERE business_id = $1
+    ORDER BY id ASC
+  `, [ctx.business_id]);
+
+  const uRes = await executor.query(`
+    SELECT 
+      id, product_id, unit_code, display_name, conversion_factor, can_sell, can_purchase, allow_decimal_qty, status, version, updated_at
+    FROM catalog.product_units
+    WHERE business_id = $1
+    ORDER BY id ASC
+  `, [ctx.business_id]);
+
+  const bRes = await executor.query(`
+    SELECT 
+      b.id, b.product_unit_id, b.barcode, b.is_internal, b.status, b.deactivated_at
+    FROM catalog.barcodes b
+    JOIN catalog.product_units pu ON b.product_unit_id = pu.id
+    WHERE pu.business_id = $1
+    ORDER BY b.id ASC
+  `, [ctx.business_id]);
+
+  return {
+    bootstrap_version: 1,
+    business_id: ctx.business_id,
+    server_time: serverTime,
+    products: pRes.rows.map((p: any) => ({
+      id: p.id,
+      sku: p.sku,
+      name: p.name,
+      base_unit_code: p.base_unit_code,
+      track_inventory: p.track_inventory,
+      status: p.status,
+      version: p.version,
+      updated_at: p.updated_at.toISOString()
+    })),
+    product_units: uRes.rows.map((u: any) => ({
+      id: u.id,
+      product_id: u.product_id,
+      unit_code: u.unit_code,
+      display_name: u.display_name,
+      conversion_factor: u.conversion_factor, // Already string from NUMERIC mapping
+      can_sell: u.can_sell,
+      can_purchase: u.can_purchase,
+      allow_decimal_qty: u.allow_decimal_qty,
+      status: u.status,
+      version: u.version,
+      updated_at: u.updated_at.toISOString()
+    })),
+    barcodes: bRes.rows.map((b: any) => ({
+      id: b.id,
+      product_unit_id: b.product_unit_id,
+      barcode: b.barcode,
+      is_internal: b.is_internal,
+      status: b.status,
+      deactivated_at: b.deactivated_at ? b.deactivated_at.toISOString() : null
+    }))
+  };
+}

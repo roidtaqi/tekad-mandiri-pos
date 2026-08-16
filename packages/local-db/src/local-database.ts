@@ -48,14 +48,14 @@ function assertDefinition(definition: LocalDatabaseDefinition): void {
   }
 }
 
-class DexieLocalDatabase<
+export class DexieLocalDatabase<
   TApplication extends LocalDatabaseApplication,
 > implements LocalDatabaseLifecycle {
   readonly application: TApplication;
   readonly name: string;
   readonly schemaVersion: number;
 
-  readonly #database: Dexie;
+  protected readonly _database: Dexie;
 
   constructor(
     definition: LocalDatabaseDefinition<TApplication>,
@@ -75,30 +75,30 @@ class DexieLocalDatabase<
         }
       : { autoOpen: false };
 
-    this.#database = new Dexie(this.name, dexieOptions);
+    this._database = new Dexie(this.name, dexieOptions);
     registerSchemaVersions(
-      this.#database,
+      this._database,
       definition.schemaVersions,
       `${definition.application} local database`,
     );
 
     // A stale tab must release its connection so a newer schema can proceed.
     // autoOpen remains disabled, so no table operation can silently reopen it.
-    this.#database.on("versionchange", () => {
-      this.#database.close();
+    this._database.on("versionchange", () => {
+      this._database.close();
     });
   }
 
   async open(): Promise<void> {
-    await this.#database.open();
+    await this._database.open();
   }
 
   close(): void {
-    this.#database.close();
+    this._database.close();
   }
 
   isOpen(): boolean {
-    return this.#database.isOpen();
+    return this._database.isOpen();
   }
 }
 

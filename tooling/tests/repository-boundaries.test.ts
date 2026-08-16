@@ -836,7 +836,7 @@ describe("workspace package boundaries", () => {
     expect(localDbRuntimeDependencies).not.toHaveProperty("fake-indexeddb");
 
     for (const dependency of Object.keys(localDbRuntimeDependencies)) {
-      if (dependency.startsWith("@kastur/")) {
+      if (dependency.startsWith("@kastur/") && dependency !== "@kastur/contracts") {
         violations.push(
           `${localDbWorkspace.directory} has runtime dependency ${dependency}`,
         );
@@ -939,7 +939,7 @@ describe("workspace package boundaries", () => {
           );
         }
 
-        if (specifier.startsWith("@kastur/")) {
+        if (specifier.startsWith("@kastur/") && specifier !== "@kastur/contracts") {
           violations.push(
             `${path.relative(repositoryRoot, fileName)} imports ${specifier}`,
           );

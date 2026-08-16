@@ -14,3 +14,11 @@ export {
   POS_LOCAL_DATABASE_SCHEMA_VERSION,
 } from "./pos-database";
 export type { PosLocalDatabase } from "./pos-database";
+export { CATALOG_ALREADY_BOOTSTRAPPED } from "./catalog-cache";
+export type {
+  PosCatalogCache,
+  LocalCatalogBootstrapState,
+  LocalPosProduct,
+  LocalPosProductUnit,
+  LocalPosBarcode,
+} from "./catalog-cache";

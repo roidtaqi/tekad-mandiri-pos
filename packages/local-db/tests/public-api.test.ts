@@ -11,8 +11,9 @@ import {
 } from "@kastur/local-db";
 
 import { backOfficeLocalDatabaseDefinition } from "../src/back-office-database";
-import { createLocalDatabase } from "../src/local-database";
+import { createLocalDatabase, defineLocalDatabase } from "../src/local-database";
 import { posLocalDatabaseDefinition } from "../src/pos-database";
+import { defineSchemaVersions } from "../src/schema-versions";
 import {
   createTestDatabaseRuntime,
   type TestDatabaseRuntime,
@@ -33,6 +34,7 @@ describe("public local database API", () => {
     expect(Object.keys(LocalDatabase).sort()).toEqual([
       "BACK_OFFICE_LOCAL_DATABASE_NAME",
       "BACK_OFFICE_LOCAL_DATABASE_SCHEMA_VERSION",
+      "CATALOG_ALREADY_BOOTSTRAPPED",
       "POS_LOCAL_DATABASE_NAME",
       "POS_LOCAL_DATABASE_SCHEMA_VERSION",
       "createBackOfficeLocalDatabase",
@@ -50,7 +52,7 @@ describe("public local database API", () => {
     expect(POS_LOCAL_DATABASE_NAME).not.toBe(
       BACK_OFFICE_LOCAL_DATABASE_NAME,
     );
-    expect(POS_LOCAL_DATABASE_SCHEMA_VERSION).toBe(1);
+    expect(POS_LOCAL_DATABASE_SCHEMA_VERSION).toBe(2);
     expect(BACK_OFFICE_LOCAL_DATABASE_SCHEMA_VERSION).toBe(1);
 
     const pos = createPosLocalDatabase();
@@ -92,8 +94,22 @@ describe("current production definitions", () => {
 
     expect(database.isOpen()).toBe(true);
     expect(database.schemaVersion).toBe(definition.currentSchemaVersion);
-    expect(definition.schemaVersions).toHaveLength(1);
     expect(definition.schemaVersions[0]?.stores).toEqual({});
+
+    if (definition.application === "pos") {
+      expect(definition.currentSchemaVersion).toBe(2);
+      expect(definition.schemaVersions).toHaveLength(2);
+      expect(definition.schemaVersions[1]?.version).toBe(2);
+      expect(Object.keys(definition.schemaVersions[1]?.stores ?? {}).sort()).toEqual([
+        "barcodes",
+        "catalog_bootstrap_state",
+        "product_units",
+        "products",
+      ]);
+    } else {
+      expect(definition.currentSchemaVersion).toBe(1);
+      expect(definition.schemaVersions).toHaveLength(1);
+    }
 
     const databaseInfo = await runtime.indexedDB.databases();
     expect(databaseInfo.map(({ name }) => name)).toContain(databaseName);
@@ -109,7 +125,49 @@ describe("current production definitions", () => {
       };
     });
 
-    expect(objectStoreNames).toEqual([]);
+    if (definition.application === "pos") {
+      expect(objectStoreNames.sort()).toEqual([
+        "barcodes",
+        "catalog_bootstrap_state",
+        "product_units",
+        "products",
+      ]);
+    } else {
+      expect(objectStoreNames).toEqual([]);
+    }
+  });
+
+  it("advances POS from V1 to V2 preserving data isolation", async () => {
+    const databaseName = runtime.createDatabaseName("v1-to-v2-upgrade");
+    
+    // Simulate opening V1 first
+    const v1Versions = defineSchemaVersions([{ stores: {}, version: 1 }], "V1");
+    const v1Definition = defineLocalDatabase({
+      application: "pos",
+      currentSchemaVersion: 1,
+      name: databaseName,
+      schemaVersions: v1Versions,
+    });
+
+    const dbV1 = runtime.track(
+      createLocalDatabase(v1Definition, {
+        databaseName,
+        dependencies: runtime.dependencies,
+      }),
+    );
+    await dbV1.open();
+    dbV1.close();
+
+    // Now open V2
+    const dbV2 = runtime.track(
+      createLocalDatabase(posLocalDatabaseDefinition, {
+        databaseName,
+        dependencies: runtime.dependencies,
+      }),
+    );
+    await dbV2.open();
+    expect(dbV2.schemaVersion).toBe(2);
+    dbV2.close();
   });
 
   it("closes and reopens the same instance without changing its schema", async () => {
