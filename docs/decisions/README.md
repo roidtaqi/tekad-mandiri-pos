@@ -10,3 +10,4 @@ Material architecture changes belong here as focused ADRs. An ADR should state t
 - [ADR-0004: Catalog Master Normalization and Tenant Integrity](./ADR-0004-catalog-master-normalization-and-tenant-integrity.md) — M1-004 Catalog Master Normalization and Tenant Integrity.
 - [ADR-0005: Product Unit and Barcode Relational Boundary](./ADR-0005-product-unit-barcode-relational-boundary.md) — M1-005 Product Unit and Barcode Relational Boundary.
 - [ADR-0006: POS Catalog Bootstrap and Local Cache Boundary](./ADR-0006-pos-catalog-bootstrap-local-cache-boundary.md) — M1-007 POS Catalog Bootstrap and Local Cache Boundary.
+- [ADR-0007: Permission-Aware Query Redaction](./ADR-0007-permission-aware-query-redaction.md) — M1-008 Permission-Aware Query Redaction.

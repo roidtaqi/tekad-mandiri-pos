@@ -7,6 +7,13 @@ import {
   CatalogError 
 } from "@kastur/contracts";
 import { ActorContext, SqlExecutor } from "../core/context.js";
+import {
+  serializeProductListItem,
+  serializeProductDetail,
+  serializeCatalogCategoryOption,
+  serializeCatalogBrandOption,
+  serializePosCatalogBootstrapSnapshot
+} from "./serializers.js";
 
 export async function listProducts(
   ctx: ActorContext,
@@ -83,17 +90,7 @@ export async function listProducts(
   const res = await executor.query(sql, params);
 
   return {
-    items: res.rows.map((r: any) => ({
-      id: r.id,
-      sku: r.sku,
-      name: r.name,
-      base_unit_code: r.base_unit_code,
-      track_inventory: r.track_inventory,
-      status: r.status,
-      version: r.version,
-      category: { id: r.category_id, name: r.category_name },
-      brand: r.brand_id ? { id: r.brand_id, name: r.brand_name } : null
-    })),
+    items: res.rows.map((r: any) => serializeProductListItem(ctx, r)),
     total
   };
 }
@@ -121,7 +118,6 @@ export async function getProductDetail(
   if (pRes.rows.length === 0) {
     throw new CatalogError("ENTITY_NOT_FOUND", "Product not found");
   }
-  const p = pRes.rows[0];
 
   const uRes = await executor.query(`
     SELECT id, unit_code, display_name, conversion_factor, can_sell, can_purchase, allow_decimal_qty, status, version
@@ -137,42 +133,7 @@ export async function getProductDetail(
     WHERE pu.business_id = $1 AND pu.product_id = $2
   `, [ctx.business_id, productId]);
 
-  const units = uRes.rows.map((u: any) => {
-    const barcodes = bRes.rows.filter((b: any) => b.product_unit_id === u.id).map((b: any) => ({
-      id: b.id,
-      barcode: b.barcode,
-      is_internal: b.is_internal,
-      status: b.status,
-      deactivated_at: b.deactivated_at ? b.deactivated_at.toISOString() : null
-    }));
-    return {
-      id: u.id,
-      unit_code: u.unit_code,
-      display_name: u.display_name,
-      conversion_factor: u.conversion_factor,
-      can_sell: u.can_sell,
-      can_purchase: u.can_purchase,
-      allow_decimal_qty: u.allow_decimal_qty,
-      status: u.status,
-      version: u.version,
-      barcodes
-    };
-  });
-
-  return {
-    id: p.id,
-    sku: p.sku,
-    name: p.name,
-    base_unit_code: p.base_unit_code,
-    track_inventory: p.track_inventory,
-    status: p.status,
-    version: p.version,
-    created_at: p.created_at.toISOString(),
-    updated_at: p.updated_at.toISOString(),
-    category: { id: p.category_id, name: p.category_name },
-    brand: p.brand_id ? { id: p.brand_id, name: p.brand_name } : null,
-    units
-  };
+  return serializeProductDetail(ctx, pRes.rows[0], uRes.rows, bRes.rows);
 }
 
 export async function listCategories(
@@ -186,7 +147,7 @@ export async function listCategories(
     `SELECT id, name FROM catalog.categories WHERE business_id = $1 AND status = 'ACTIVE' ORDER BY name ASC`,
     [ctx.business_id]
   );
-  return res.rows;
+  return res.rows.map((r: any) => serializeCatalogCategoryOption(ctx, r));
 }
 
 export async function listBrands(
@@ -200,7 +161,7 @@ export async function listBrands(
     `SELECT id, name FROM catalog.brands WHERE business_id = $1 AND status = 'ACTIVE' ORDER BY name ASC`,
     [ctx.business_id]
   );
-  return res.rows;
+  return res.rows.map((r: any) => serializeCatalogBrandOption(ctx, r));
 }
 
 export async function buildPosCatalogBootstrapProjection(
@@ -237,40 +198,5 @@ export async function buildPosCatalogBootstrapProjection(
     ORDER BY b.id ASC
   `, [ctx.business_id]);
 
-  return {
-    bootstrap_version: 1,
-    business_id: ctx.business_id,
-    server_time: serverTime,
-    products: pRes.rows.map((p: any) => ({
-      id: p.id,
-      sku: p.sku,
-      name: p.name,
-      base_unit_code: p.base_unit_code,
-      track_inventory: p.track_inventory,
-      status: p.status,
-      version: p.version,
-      updated_at: p.updated_at.toISOString()
-    })),
-    product_units: uRes.rows.map((u: any) => ({
-      id: u.id,
-      product_id: u.product_id,
-      unit_code: u.unit_code,
-      display_name: u.display_name,
-      conversion_factor: u.conversion_factor, // Already string from NUMERIC mapping
-      can_sell: u.can_sell,
-      can_purchase: u.can_purchase,
-      allow_decimal_qty: u.allow_decimal_qty,
-      status: u.status,
-      version: u.version,
-      updated_at: u.updated_at.toISOString()
-    })),
-    barcodes: bRes.rows.map((b: any) => ({
-      id: b.id,
-      product_unit_id: b.product_unit_id,
-      barcode: b.barcode,
-      is_internal: b.is_internal,
-      status: b.status,
-      deactivated_at: b.deactivated_at ? b.deactivated_at.toISOString() : null
-    }))
-  };
+  return serializePosCatalogBootstrapSnapshot(ctx, serverTime, pRes.rows, uRes.rows, bRes.rows);
 }
