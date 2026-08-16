@@ -176,10 +176,10 @@ describe("migration discovery", () => {
     );
   });
 
-  it("validates the canonical directory without inventing a domain migration", async () => {
-    await expect(discoverMigrations(canonicalMigrationsDirectory)).resolves.toEqual(
-      [],
-    );
+  it("validates the canonical directory contains the domain migration", async () => {
+    const migrations = await discoverMigrations(canonicalMigrationsDirectory);
+    expect(migrations.length).toBeGreaterThan(0);
+    expect(migrations[0]?.filename).toBe("000001_create_core_businesses_locations.sql");
   });
 });
 
