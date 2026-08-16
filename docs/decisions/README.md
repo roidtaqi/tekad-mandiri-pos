@@ -8,3 +8,4 @@ Material architecture changes belong here as focused ADRs. An ADR should state t
 - [ADR-0002: Permission catalog and built-in system role presets](./ADR-0002-permission-catalog-and-system-role-presets.md) — M1-002B Identity permission registry and built-in role presets.
 - [ADR-0003: Auth and Session Contract Foundation](./ADR-0003-auth-session-contract-foundation.md) — M1-003 Auth and Session Contract Foundation.
 - [ADR-0004: Catalog Master Normalization and Tenant Integrity](./ADR-0004-catalog-master-normalization-and-tenant-integrity.md) — M1-004 Catalog Master Normalization and Tenant Integrity.
+- [ADR-0005: Product Unit and Barcode Relational Boundary](./ADR-0005-product-unit-barcode-relational-boundary.md) — M1-005 Product Unit and Barcode Relational Boundary.

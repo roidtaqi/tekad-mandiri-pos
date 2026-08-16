@@ -83,7 +83,8 @@ describeWithPostgres("M1-004: Catalog Product / Category / Brand Schema", () => 
       "000002_create_identity_core_schema.sql",
       "000003_seed_permission_catalog_role_presets.sql",
       "000004_create_identity_devices_sessions_authorization_versions.sql",
-      "000005_create_catalog_products_categories_brands.sql"
+      "000005_create_catalog_products_categories_brands.sql",
+      "000006_create_product_units_barcodes.sql"
     ]);
   });
 
@@ -101,8 +102,6 @@ describeWithPostgres("M1-004: Catalog Product / Category / Brand Schema", () => 
   it("G. M1-005 tables do NOT exist", async () => {
     const tablesRes = await client?.query(`SELECT table_name FROM information_schema.tables WHERE table_schema = 'catalog'`);
     const tables = tablesRes?.rows.map(r => r.table_name) ?? [];
-    expect(tables).not.toContain("product_units");
-    expect(tables).not.toContain("barcodes");
     expect(tables).not.toContain("suppliers");
     expect(tables).not.toContain("product_suppliers");
     expect(tables).not.toContain("import_batches");
@@ -314,9 +313,6 @@ describeWithPostgres("M1-004: Catalog Product / Category / Brand Schema", () => 
     expect(cols).not.toContain("supplier_id");
     expect(cols).not.toContain("barcode");
     
-    const tablesRes = await client?.query(`SELECT table_name FROM information_schema.tables WHERE table_schema = 'catalog'`);
-    const tables = tablesRes?.rows.map(r => r.table_name) ?? [];
-    expect(tables).not.toContain("product_units");
   });
 
   it("AT. rerunning migration applies nothing twice", async () => {

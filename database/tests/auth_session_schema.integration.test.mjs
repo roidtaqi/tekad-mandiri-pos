@@ -83,7 +83,8 @@ describeWithPostgres("M1-003: Auth / Session Contract Foundation", () => {
       "000002_create_identity_core_schema.sql",
       "000003_seed_permission_catalog_role_presets.sql",
       "000004_create_identity_devices_sessions_authorization_versions.sql",
-      "000005_create_catalog_products_categories_brands.sql"
+      "000005_create_catalog_products_categories_brands.sql",
+      "000006_create_product_units_barcodes.sql"
     ]);
   });
 
