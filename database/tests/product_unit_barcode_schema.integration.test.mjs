@@ -164,6 +164,9 @@ describeWithPostgres("M1-005: Product Unit and Barcode Schema", () => {
     await client?.query(`INSERT INTO catalog.barcodes (id, business_id, product_unit_id, barcode, is_internal, status) VALUES ($1, $2, $3, 'B1', true, 'ACTIVE')`, [randomUUID(), bId, pu1]);
     await client?.query(`INSERT INTO catalog.barcodes (id, business_id, product_unit_id, barcode, is_internal, status) VALUES ($1, $2, $3, 'B2', false, 'INACTIVE')`, [randomUUID(), bId, pu1]);
     
+    // Omission of is_internal fails (NOT NULL proof)
+    await expect(client?.query(`INSERT INTO catalog.barcodes (id, business_id, product_unit_id, barcode, status) VALUES ($1, $2, $3, 'B_NO_INT', 'ACTIVE')`, [randomUUID(), bId, pu1])).rejects.toThrow();
+
     await expect(client?.query(`INSERT INTO catalog.barcodes (id, business_id, product_unit_id, barcode, is_internal, status) VALUES ($1, $2, $3, 'B3', false, 'DELETED')`, [randomUUID(), bId, pu1])).rejects.toThrow();
   });
 
@@ -175,6 +178,9 @@ describeWithPostgres("M1-005: Product Unit and Barcode Schema", () => {
     await client?.query(`INSERT INTO core.businesses (id, name, currency_code, timezone, status) VALUES ($1, 'B1', 'IDR', 'UTC', 'ACTIVE'), ($2, 'B2', 'IDR', 'UTC', 'ACTIVE')`, [bId1, bId2]);
     await client?.query(`INSERT INTO catalog.categories (id, business_id, name, status) VALUES ($1, $2, 'C1', 'ACTIVE')`, [cId1, bId1]);
     await client?.query(`INSERT INTO catalog.products (id, business_id, sku, name, category_id, base_unit_code, track_inventory, status) VALUES ($1, $2, 'S1', 'P1', $3, 'PCS', true, 'ACTIVE')`, [pId1, bId1, cId1]);
+
+    // Isolated non-existent Product proof
+    await expect(client?.query(`INSERT INTO catalog.product_units (id, business_id, product_id, unit_code, display_name, conversion_factor, can_sell, can_purchase, allow_decimal_qty, status) VALUES ($1, $2, $3, 'PCS', 'Pieces', 1, true, true, false, 'ACTIVE')`, [randomUUID(), bId1, randomUUID()])).rejects.toThrow();
 
     // ProductUnit requires existing Business and existing Product, same business
     await expect(client?.query(`INSERT INTO catalog.product_units (id, business_id, product_id, unit_code, display_name, conversion_factor, can_sell, can_purchase, allow_decimal_qty, status) VALUES ($1, $2, $3, 'PCS', 'Pieces', 1, true, true, false, 'ACTIVE')`, [randomUUID(), randomUUID(), pId1])).rejects.toThrow();
@@ -258,12 +264,21 @@ describeWithPostgres("M1-005: Product Unit and Barcode Schema", () => {
     expect(row.version).toBe("1");
     expect(row.created_at instanceof Date).toBe(true);
     expect(row.updated_at instanceof Date).toBe(true);
-    expect(row.can_sell).toBe(true);
-    expect(row.can_purchase).toBe(false);
-    expect(row.allow_decimal_qty).toBe(true);
     
-    // Test that they are NOT NULL
-    await expect(client?.query(`INSERT INTO catalog.product_units (id, business_id, product_id, unit_code, display_name, conversion_factor, can_sell, allow_decimal_qty, status) VALUES ($1, $2, $3, 'BOX', 'Box', 1, true, false, 'ACTIVE')`, [randomUUID(), bId, pId])).rejects.toThrow();
+    // Independent omission/NULL failures for all 3 booleans
+    await expect(client?.query(`INSERT INTO catalog.product_units (id, business_id, product_id, unit_code, display_name, conversion_factor, can_purchase, allow_decimal_qty, status) VALUES ($1, $2, $3, 'U1', 'U1', 1, false, false, 'ACTIVE')`, [randomUUID(), bId, pId])).rejects.toThrow();
+    await expect(client?.query(`INSERT INTO catalog.product_units (id, business_id, product_id, unit_code, display_name, conversion_factor, can_sell, allow_decimal_qty, status) VALUES ($1, $2, $3, 'U2', 'U2', 1, false, false, 'ACTIVE')`, [randomUUID(), bId, pId])).rejects.toThrow();
+    await expect(client?.query(`INSERT INTO catalog.product_units (id, business_id, product_id, unit_code, display_name, conversion_factor, can_sell, can_purchase, status) VALUES ($1, $2, $3, 'U3', 'U3', 1, false, false, 'ACTIVE')`, [randomUUID(), bId, pId])).rejects.toThrow();
+
+    // Prove independent states for can_sell/can_purchase
+    // can_sell=true, can_purchase=false
+    await client?.query(`INSERT INTO catalog.product_units (id, business_id, product_id, unit_code, display_name, conversion_factor, can_sell, can_purchase, allow_decimal_qty, status) VALUES ($1, $2, $3, 'TF', 'TF', 1, true, false, false, 'ACTIVE')`, [randomUUID(), bId, pId]);
+    // can_sell=false, can_purchase=true
+    await client?.query(`INSERT INTO catalog.product_units (id, business_id, product_id, unit_code, display_name, conversion_factor, can_sell, can_purchase, allow_decimal_qty, status) VALUES ($1, $2, $3, 'FT', 'FT', 1, false, true, false, 'ACTIVE')`, [randomUUID(), bId, pId]);
+    // can_sell=true, can_purchase=true
+    await client?.query(`INSERT INTO catalog.product_units (id, business_id, product_id, unit_code, display_name, conversion_factor, can_sell, can_purchase, allow_decimal_qty, status) VALUES ($1, $2, $3, 'TT', 'TT', 1, true, true, false, 'ACTIVE')`, [randomUUID(), bId, pId]);
+    // can_sell=false, can_purchase=false (Intentional omission valid state)
+    await client?.query(`INSERT INTO catalog.product_units (id, business_id, product_id, unit_code, display_name, conversion_factor, can_sell, can_purchase, allow_decimal_qty, status) VALUES ($1, $2, $3, 'FF', 'FF', 1, false, false, false, 'ACTIVE')`, [randomUUID(), bId, pId]);
   });
 
   it("51. Product Delete Restriction", async () => {
@@ -289,6 +304,9 @@ describeWithPostgres("M1-005: Product Unit and Barcode Schema", () => {
     await client?.query(`INSERT INTO catalog.categories (id, business_id, name, status) VALUES ($1, $2, 'C1', 'ACTIVE')`, [cId1, bId1]);
     await client?.query(`INSERT INTO catalog.products (id, business_id, sku, name, category_id, base_unit_code, track_inventory, status) VALUES ($1, $2, 'S1', 'P1', $3, 'PCS', true, 'ACTIVE')`, [pId1, bId1, cId1]);
     await client?.query(`INSERT INTO catalog.product_units (id, business_id, product_id, unit_code, display_name, conversion_factor, can_sell, can_purchase, allow_decimal_qty, status) VALUES ($1, $2, $3, 'PCS', 'Pieces', 1, true, true, false, 'ACTIVE')`, [puId1, bId1, pId1]);
+
+    // Isolated Barcode Business rejection with valid ProductUnit
+    await expect(client?.query(`INSERT INTO catalog.barcodes (id, business_id, product_unit_id, barcode, is_internal, status) VALUES ($1, $2, $3, '456', false, 'ACTIVE')`, [randomUUID(), randomUUID(), puId1])).rejects.toThrow();
 
     // Cross-tenant barcode rejected
     await expect(client?.query(`INSERT INTO catalog.barcodes (id, business_id, product_unit_id, barcode, is_internal, status) VALUES ($1, $2, $3, '123', false, 'ACTIVE')`, [randomUUID(), bId2, puId1])).rejects.toThrow();
@@ -366,12 +384,35 @@ describeWithPostgres("M1-005: Product Unit and Barcode Schema", () => {
     expect(col.data_type).toBe("timestamp with time zone");
   });
 
-  it("59. Base Unit Boundary Architecture check", () => {
-    // This is an architecture confirmation test:
-    // We confirm that Product retains base_unit_code TEXT and no circular foreign key
-    // exists to enforce base_unit_code = ProductUnit.unit_code. 
-    // This invariant will be enforced later by the catalog command.
-    expect(true).toBe(true);
+  it("59. Base Unit Boundary Architecture check", async () => {
+    // A, D. catalog.products has base_unit_code as TEXT, and NO base_unit_id or product_unit_id
+    const pColsRes = await client?.query(`SELECT column_name, data_type FROM information_schema.columns WHERE table_schema = 'catalog' AND table_name = 'products'`);
+    const pCols = Object.fromEntries(pColsRes?.rows.map(r => [r.column_name, r]) ?? []);
+    expect(pCols["base_unit_code"].data_type).toBe("text");
+    expect(pCols["base_unit_id"]).toBeUndefined();
+    expect(pCols["product_unit_id"]).toBeUndefined();
+
+    // B, C. catalog.product_units has unit_code as TEXT and conversion_factor as NUMERIC, NO is_base_unit, NO base_unit_id
+    const puColsRes = await client?.query(`SELECT column_name, data_type FROM information_schema.columns WHERE table_schema = 'catalog' AND table_name = 'product_units'`);
+    const puCols = Object.fromEntries(puColsRes?.rows.map(r => [r.column_name, r]) ?? []);
+    expect(puCols["unit_code"].data_type).toBe("text");
+    expect(puCols["conversion_factor"].data_type).toBe("numeric");
+    expect(puCols["is_base_unit"]).toBeUndefined();
+    expect(puCols["base_unit_id"]).toBeUndefined();
+
+    // E. NO foreign key from catalog.products to catalog.product_units
+    const fkRes = await client?.query(`
+      SELECT conname, conrelid::regclass::text AS relname, confrelid::regclass::text AS frelname
+      FROM pg_constraint
+      WHERE contype = 'f'
+      AND conrelid = 'catalog.products'::regclass
+      AND confrelid = 'catalog.product_units'::regclass
+    `);
+    expect(fkRes?.rows.length).toBe(0);
+
+    // This test explicitly documents that:
+    // Product.base_unit_code <-> ProductUnit.unit_code and Base Unit conversion_factor = 1
+    // remain FUTURE COMMAND-LEVEL invariants and are intentionally not database-enforced in M1-005.
   });
 
   it("60. NO FUTURE SCOPE TABLES", async () => {
