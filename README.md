@@ -2,7 +2,7 @@
 
 Kastur Retail System v2 is a new, offline-first retail-system rebuild. This repository is the v2 monorepo; the legacy `inventory-pricing-app` and `integrated-pos-app` repositories are reference and migration sources only.
 
-M0-002 establishes shared configuration, testing, and build conventions only. It contains no catalog, pricing, stock, sales, cash, identity, return, or synchronization behavior.
+M0-003 establishes the Worker API runtime boundary and a forward-only PostgreSQL migration harness. It contains no catalog, pricing, stock, sales, cash, identity, return, or synchronization behavior and adds no domain schema or seeds.
 
 ## Repository layout
 
@@ -39,16 +39,16 @@ The TypeScript hierarchy keeps runtime assumptions explicit:
 ```text
 tsconfig.base.json      strict, environment-neutral defaults
 tsconfig.browser.json   browser/React APIs, without Node globals
-tsconfig.worker.json    Worker/Web Fetch APIs, without DOM or Node globals
+tsconfig.worker.json    environment-neutral base for Worker applications
 tsconfig.node.json      Node-only tooling
 tsconfig.test.json      repository tests running in Node
 ```
 
 Application production configs include source only. Their separate test configs add the types needed by the current Node-based unit-test harness, while root tooling is checked by the root `tsconfig.json`.
 
-The Worker preset uses type-only Cloudflare Worker-class definitions without adding Wrangler, bindings, deployment configuration, or runtime integration. Compatibility-date-specific generated types remain part of M0-003, when the API runtime is configured explicitly.
+The API uses a Worker-class runtime with generated, compatibility-date-specific types. The checked-in Worker configuration uses compatibility date `2026-08-16`, selected as the M0-003 implementation date supported by the pinned Wrangler/workerd toolchain. The date is not advanced automatically: review a date change as an infrastructure update, regenerate the types in the same change, and rerun typecheck, tests, build, and the local Worker smoke. Node compatibility is disabled. Because Wrangler's generated declarations include some nominal Node-global placeholders even without that flag, repository boundary checks explicitly prohibit Node-global and Node-built-in usage in production API source.
 
-Back Office and POS share only the minimal React Vite baseline under `tooling/vite`. They remain independent applications and outputs; POS owns all PWA-specific configuration. API build configuration remains Worker-specific.
+Back Office and POS share only the minimal React Vite baseline under `tooling/vite`. They remain independent applications and outputs; POS owns all PWA-specific configuration. The API's existing Vite build remains a framework-independent bundle smoke, while `wrangler.jsonc` and the local Wrangler smoke are authoritative for the Worker runtime entry point. A future deployment workflow must align its release artifact with Wrangler; M0-003 deliberately adds no deployment command or production resource access.
 
 Vitest uses named, runtime-explicit projects in `vitest.config.ts`. Current frontend tests use server rendering in Node, API tests use Node's Web Fetch implementation as a unit-test harness, and repository-boundary tests validate the production TypeScript runtime assumptions separately. Package tests are discovered across `packages/*` in a fast Node unit-test project; a future package test that needs browser APIs must receive an explicit browser-aware project instead of relying on accidental globals.
 
@@ -84,7 +84,30 @@ npm run dev:backoffice
 npm run dev:pos
 ```
 
-No environment variables or production secrets are required for M0-002 builds or tests. Frontend configuration must never contain privileged credentials; client-visible `VITE_*` or `PUBLIC_*` names may contain only non-secret values.
+For local API runtime and type verification:
+
+```bash
+npm run dev:api
+npm run api:types
+npm run api:types:check
+npm run api:smoke
+```
+
+`dev:api` runs the Worker locally. `api:types` regenerates the checked-in Worker environment types, `api:types:check` verifies they are current, and `api:smoke` starts an isolated local Worker and checks its health and not-found responses.
+
+No production Worker database binding or Hyperdrive resource is configured in M0-003. A later API infrastructure slice may add the PostgreSQL/Neon runtime connection seam (and optionally Hyperdrive) without changing the Node-only migration boundary.
+
+Database migrations are explicit Node-only operations:
+
+```bash
+npm run db:migrate:check
+DATABASE_URL='postgresql://...' npm run db:migrate:status
+DATABASE_URL='postgresql://...' npm run db:migrate
+```
+
+Migration conventions and safety behavior are documented in [ADR-0001](./docs/decisions/ADR-0001-forward-only-sql-migrations.md) and the [database workspace guide](./database/README.md). `DATABASE_URL` must be a direct, unpooled, server/tooling-only PostgreSQL secret. Builds, type checks, lint, unit tests, and static migration validation do not require it.
+
+Frontend configuration must never contain privileged credentials; client-visible `VITE_*` or `PUBLIC_*` names may contain only non-secret values.
 
 ## Documentation
 

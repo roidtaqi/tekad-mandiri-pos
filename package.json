@@ -12,24 +12,34 @@
     "apps/*"
   ],
   "scripts": {
+    "api:smoke": "node tooling/scripts/smoke-api-worker.mjs",
+    "api:types": "npm run types:generate --workspace @kastur/api",
+    "api:types:check": "npm run types:check --workspace @kastur/api",
     "build": "npm run build --workspaces && node tooling/scripts/verify-build-output.mjs",
     "check:boundaries": "vitest run --config vitest.config.ts --project repository-boundaries",
+    "db:migrate": "node database/scripts/migrations.mjs apply",
+    "db:migrate:check": "node database/scripts/migrations.mjs check",
+    "db:migrate:status": "node database/scripts/migrations.mjs status",
+    "dev:api": "npm run dev --workspace @kastur/api",
     "dev:backoffice": "npm run dev --workspace @kastur/backoffice",
     "dev:pos": "npm run dev --workspace @kastur/pos",
     "lint": "oxlint --config .oxlintrc.json --deny-warnings .",
     "test": "vitest run --config vitest.config.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit && npm run typecheck --workspaces"
+    "test:database": "node database/scripts/require-test-database.mjs && vitest run --config vitest.config.ts --project database-integration",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit && tsc -p database/tsconfig.json --noEmit && npm run typecheck --workspaces"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "4.20260702.1",
     "@types/node": "^22.20.1",
+    "@types/pg": "8.21.0",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.5",
     "oxlint": "^1.78.0",
+    "pg": "8.23.0",
     "typescript": "~6.0.2",
     "vite": "^8.2.1",
     "vite-plugin-pwa": "^1.3.0",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "wrangler": "4.123.0"
   }
 }

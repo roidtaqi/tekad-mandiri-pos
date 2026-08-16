@@ -1,0 +1,5 @@
+# Migration checksums cover exact bytes, so checkout line endings must be stable.
+database/migrations/*.sql text eol=lf
+
+# Preserve Wrangler's exact generated output; freshness is checked by Wrangler.
+apps/api/worker-configuration.d.ts -whitespace

@@ -2,4 +2,6 @@
 
 Material architecture changes belong here as focused ADRs. An ADR should state the context, decision, consequences, and superseded decisions when applicable.
 
-M0-001 adds no new material decision beyond the approved architecture. Migration tooling remains deliberately undecided until M0-003, so no ADR is created for it in this task.
+## Accepted decisions
+
+- [ADR-0001: Forward-only SQL migrations with a repository-owned runner](./ADR-0001-forward-only-sql-migrations.md) — Node-only SQL migration execution, immutable checksummed history, locking, and failure semantics for M0-003.

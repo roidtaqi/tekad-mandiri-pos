@@ -65,6 +65,26 @@ export default defineConfig({
           testTimeout: 15_000,
         },
       },
+      {
+        root: repositoryRoot,
+        test: {
+          ...testDefaults,
+          environment: "node",
+          include: ["database/tests/**/*.unit.test.mjs"],
+          name: "database-unit",
+        },
+      },
+      {
+        root: repositoryRoot,
+        test: {
+          ...testDefaults,
+          environment: "node",
+          hookTimeout: 30_000,
+          include: ["database/tests/**/*.integration.test.mjs"],
+          name: "database-integration",
+          testTimeout: 30_000,
+        },
+      },
     ],
   },
 });

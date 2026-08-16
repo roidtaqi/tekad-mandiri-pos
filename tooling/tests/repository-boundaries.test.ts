@@ -340,17 +340,14 @@ describe("TypeScript runtime boundaries", () => {
     }
   });
 
-  it("allows Web Fetch APIs without exposing DOM or Node globals in Worker source", () => {
+  it("allows configured Worker APIs without exposing browser-only DOM globals", () => {
     const configPath = "apps/api/tsconfig.json";
     const unsupportedGlobals = [
-      "Buffer",
       "FileReader",
       "OffscreenCanvas",
       "Worker",
       "document",
       "indexedDB",
-      "navigator",
-      "process",
       "window",
     ];
 
@@ -369,6 +366,59 @@ describe("TypeScript runtime boundaries", () => {
     for (const globalName of unsupportedGlobals) {
       expect(diagnostics.join("\n")).toContain(globalName);
     }
+  });
+
+  it("uses generated Worker types without enabling Node compatibility", async () => {
+    const wranglerConfig = await readJson<{
+      compatibility_date?: string;
+      compatibility_flags?: string[];
+      main?: string;
+      name?: string;
+    }>("apps/api/wrangler.jsonc");
+    const apiConfig = loadTsConfig("apps/api/tsconfig.json");
+    const generatedTypes = await readFile(
+      path.join(repositoryRoot, "apps/api/worker-configuration.d.ts"),
+      "utf8",
+    );
+
+    expect(wranglerConfig).toEqual({
+      $schema: "../../node_modules/wrangler/config-schema.json",
+      compatibility_date: "2026-08-16",
+      main: "src/index.ts",
+      name: "kastur-api",
+    });
+    expect(wranglerConfig.compatibility_flags).toBeUndefined();
+    expect(apiConfig.options.types).toEqual(["./worker-configuration.d.ts"]);
+    expect(generatedTypes).toMatch(
+      /Runtime types generated with workerd@\S+ 2026-08-16/u,
+    );
+
+    const productionApiFiles = (await listCodeFiles("apps/api/src")).filter(
+      (fileName) => !fileName.includes(".test."),
+    );
+    const violations: string[] = [];
+
+    for (const fileName of productionApiFiles) {
+      const sourceText = await readFile(fileName, "utf8");
+
+      for (const specifier of getModuleSpecifiers(fileName, sourceText)) {
+        if (specifier.startsWith("node:")) {
+          violations.push(
+            `${path.relative(repositoryRoot, fileName)} imports ${specifier}`,
+          );
+        }
+      }
+
+      for (const match of sourceText.matchAll(
+        /\b(?:Buffer|clearImmediate|global|process|setImmediate)\b/gu,
+      )) {
+        violations.push(
+          `${path.relative(repositoryRoot, fileName)} uses ${match[0]}`,
+        );
+      }
+    }
+
+    expect(violations).toEqual([]);
   });
 
   it("exposes Node globals only to Node tooling and tests", () => {
@@ -560,6 +610,65 @@ describe("workspace package boundaries", () => {
 
         for (const match of matches) {
           violations.push(`${path.relative(repositoryRoot, fileName)}: ${match}`);
+        }
+      }
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("keeps PostgreSQL and migration tooling out of application runtime workspaces", async () => {
+    const applicationRuntimeWorkspaces = workspaces.filter(({ name }) =>
+      [
+        "@kastur/api",
+        "@kastur/auth-client",
+        "@kastur/backoffice",
+        "@kastur/config",
+        "@kastur/local-db",
+        "@kastur/pos",
+        "@kastur/sync-client",
+        "@kastur/ui",
+      ].includes(name),
+    );
+    const violations: string[] = [];
+
+    for (const workspace of applicationRuntimeWorkspaces) {
+      const manifest = await readJson<PackageManifest>(
+        path.join(workspace.directory, "package.json"),
+      );
+      const dependencies = {
+        ...manifest.dependencies,
+        ...manifest.devDependencies,
+        ...manifest.optionalDependencies,
+        ...manifest.peerDependencies,
+      };
+      const forbiddenDependencies = ["node-pg-migrate", "pg"];
+
+      if (workspace.name !== "@kastur/api") {
+        forbiddenDependencies.push("wrangler");
+      }
+
+      for (const forbiddenDependency of forbiddenDependencies) {
+        if (dependencies[forbiddenDependency] !== undefined) {
+          violations.push(
+            `${workspace.directory} depends on ${forbiddenDependency}`,
+          );
+        }
+      }
+
+      for (const fileName of await listCodeFiles(workspace.directory)) {
+        const sourceText = await readFile(fileName, "utf8");
+
+        for (const specifier of getModuleSpecifiers(fileName, sourceText)) {
+          if (
+            specifier === "pg" ||
+            specifier === "node-pg-migrate" ||
+            specifier.includes("database/scripts")
+          ) {
+            violations.push(
+              `${path.relative(repositoryRoot, fileName)} imports ${specifier}`,
+            );
+          }
         }
       }
     }
