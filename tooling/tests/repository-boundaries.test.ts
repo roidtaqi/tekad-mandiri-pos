@@ -560,6 +560,24 @@ describe("TypeScript runtime boundaries", () => {
   });
 
   it("keeps numeric primitives strictly environment-neutral", async () => {
+    const isForbiddenImport = (specifier: string) => {
+      const normalizedSpecifier = specifier.startsWith("node:")
+        ? specifier.slice(5)
+        : specifier;
+      return (
+        specifier.startsWith("node:") ||
+        nodeBuiltins.has(normalizedSpecifier) ||
+        nodeBuiltins.has(normalizedSpecifier.split("/")[0] ?? "")
+      );
+    };
+
+    // Regression probe
+    expect(isForbiddenImport("node:fs")).toBe(true);
+    expect(isForbiddenImport("fs")).toBe(true);
+    expect(isForbiddenImport("path")).toBe(true);
+    expect(isForbiddenImport("decimal.js")).toBe(false);
+    expect(isForbiddenImport("./decimal.js")).toBe(false);
+
     const violations: string[] = [];
     const files = await listCodeFiles("packages/numeric/src");
 
@@ -571,7 +589,7 @@ describe("TypeScript runtime boundaries", () => {
       const sourceText = await readFile(fileName, "utf8");
 
       for (const specifier of getModuleSpecifiers(fileName, sourceText)) {
-        if (specifier.startsWith("node:")) {
+        if (isForbiddenImport(specifier)) {
           violations.push(
             `${path.relative(repositoryRoot, fileName)} imports ${specifier}`,
           );
