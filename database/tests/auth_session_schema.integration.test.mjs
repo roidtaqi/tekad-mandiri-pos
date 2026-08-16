@@ -121,36 +121,50 @@ describeWithPostgres("M1-003: Auth / Session Contract Foundation", () => {
       SELECT column_name, data_type 
       FROM information_schema.columns 
       WHERE table_schema = 'identity' AND table_name = 'devices'
-      ORDER BY column_name
     `);
-    const devicesCols = new Map(res1?.rows.map(r => [r.column_name, r.data_type]));
-    expect(devicesCols.get("id")).toBe("uuid");
-    expect(devicesCols.get("business_id")).toBe("uuid");
-    expect(devicesCols.get("device_key")).toBe("text");
-    expect(devicesCols.get("status")).toBe("text");
-    expect(devicesCols.get("first_seen_at")).toBe("timestamp with time zone");
+    const devicesCols = Object.fromEntries(res1?.rows.map(r => [r.column_name, r.data_type]) ?? []);
+    expect(devicesCols).toEqual({
+      id: "uuid",
+      business_id: "uuid",
+      device_key: "text",
+      name: "text",
+      platform: "text",
+      status: "text",
+      first_seen_at: "timestamp with time zone",
+      last_seen_at: "timestamp with time zone",
+      revoked_at: "timestamp with time zone",
+      created_at: "timestamp with time zone"
+    });
 
     const res2 = await client?.query(`
       SELECT column_name, data_type 
       FROM information_schema.columns 
       WHERE table_schema = 'identity' AND table_name = 'sessions'
-      ORDER BY column_name
     `);
-    const sessionsCols = new Map(res2?.rows.map(r => [r.column_name, r.data_type]));
-    expect(sessionsCols.get("id")).toBe("uuid");
-    expect(sessionsCols.get("user_id")).toBe("uuid");
-    expect(sessionsCols.get("device_id")).toBe("uuid");
-    expect(sessionsCols.get("session_secret_hash")).toBe("text");
+    const sessionsCols = Object.fromEntries(res2?.rows.map(r => [r.column_name, r.data_type]) ?? []);
+    expect(sessionsCols).toEqual({
+      id: "uuid",
+      user_id: "uuid",
+      business_id: "uuid",
+      device_id: "uuid",
+      session_secret_hash: "text",
+      issued_at: "timestamp with time zone",
+      expires_at: "timestamp with time zone",
+      revoked_at: "timestamp with time zone",
+      last_seen_at: "timestamp with time zone"
+    });
 
     const res3 = await client?.query(`
       SELECT column_name, data_type 
       FROM information_schema.columns 
       WHERE table_schema = 'identity' AND table_name = 'authorization_versions'
-      ORDER BY column_name
     `);
-    const authVersionsCols = new Map(res3?.rows.map(r => [r.column_name, r.data_type]));
-    expect(authVersionsCols.get("membership_id")).toBe("uuid");
-    expect(authVersionsCols.get("version")).toBe("bigint");
+    const authVersionsCols = Object.fromEntries(res3?.rows.map(r => [r.column_name, r.data_type]) ?? []);
+    expect(authVersionsCols).toEqual({
+      membership_id: "uuid",
+      version: "bigint",
+      changed_at: "timestamp with time zone"
+    });
   });
 
   it("H, I, J. device accepts status, rejects invalid, requires business", async () => {
@@ -266,12 +280,17 @@ describeWithPostgres("M1-003: Auth / Session Contract Foundation", () => {
 
     // V. historical revoked session row remains storable
     // R. contains session_secret_hash
-    // T. expires_at is NOT NULL
     // U. revoked_at may be NULL
     await client?.query(`
       INSERT INTO identity.sessions (id, user_id, business_id, device_id, session_secret_hash, expires_at, revoked_at)
       VALUES ($1, $2, $3, $4, 'hash2', NOW(), NOW())
     `, [sessionId, userId, businessId, deviceId]);
+
+    // T. expires_at is NOT NULL
+    await expect(client?.query(`
+      INSERT INTO identity.sessions (id, user_id, business_id, session_secret_hash)
+      VALUES ($1, $2, $3, 'hash_no_expiry')
+    `, [randomUUID(), userId, businessId])).rejects.toThrow();
 
     // S. session does not contain plaintext token/password
     const res = await client?.query(`
@@ -280,8 +299,11 @@ describeWithPostgres("M1-003: Auth / Session Contract Foundation", () => {
     const cols = res?.rows.map(r => r.column_name) ?? [];
     expect(cols).toContain("session_secret_hash");
     expect(cols).not.toContain("session_secret");
-    expect(cols).not.toContain("password");
+    expect(cols).not.toContain("session_token");
     expect(cols).not.toContain("access_token");
+    expect(cols).not.toContain("refresh_token");
+    expect(cols).not.toContain("password");
+    expect(cols).not.toContain("pin");
   });
 
   it("W. authorization_versions requires existing Membership", async () => {
