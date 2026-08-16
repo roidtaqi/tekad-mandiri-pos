@@ -559,6 +559,37 @@ describe("TypeScript runtime boundaries", () => {
     expect(violations).toEqual([]);
   });
 
+  it("keeps numeric primitives strictly environment-neutral", async () => {
+    const violations: string[] = [];
+    const files = await listCodeFiles("packages/numeric/src");
+
+    for (const fileName of files) {
+      if (!fileName.endsWith(".ts")) {
+        continue;
+      }
+
+      const sourceText = await readFile(fileName, "utf8");
+
+      for (const specifier of getModuleSpecifiers(fileName, sourceText)) {
+        if (specifier.startsWith("node:")) {
+          violations.push(
+            `${path.relative(repositoryRoot, fileName)} imports ${specifier}`,
+          );
+        }
+      }
+
+      for (const match of sourceText.matchAll(
+        /\b(?:Buffer|clearImmediate|global|process|setImmediate|require|__dirname|__filename)\b/gu,
+      )) {
+        violations.push(
+          `${path.relative(repositoryRoot, fileName)} uses ${match[0]}`,
+        );
+      }
+    }
+
+    expect(violations).toEqual([]);
+  });
+
   it("exposes Node globals only to Node tooling and tests", () => {
     const toolingDiagnostics = compileProbe(
       "tsconfig.json",
@@ -1202,6 +1233,25 @@ describe("numeric primitives boundary", () => {
     }
 
     const violations: string[] = [];
+
+    // 1. Explicitly iterate every workspace manifest
+    for (const workspace of workspaces) {
+      if (workspace.name === "@kastur/numeric") {
+        continue;
+      }
+      
+      const manifestPath = path.join(workspace.directory, "package.json");
+      const manifest = await readJson<PackageManifest>(manifestPath);
+      
+      if (manifest.dependencies?.["decimal.js"] || 
+          manifest.devDependencies?.["decimal.js"] || 
+          manifest.optionalDependencies?.["decimal.js"] || 
+          manifest.peerDependencies?.["decimal.js"]) {
+        violations.push(`${path.relative(repositoryRoot, manifestPath)} declares decimal.js dependency`);
+      }
+    }
+
+    // 2. Scan production files to ensure they don't import decimal.js
     const files = [
       ...(await listCodeFiles("apps")),
       ...(await listCodeFiles("packages")),
@@ -1210,15 +1260,6 @@ describe("numeric primitives boundary", () => {
 
     for (const fileName of files) {
       if (fileName.includes(path.sep + "numeric" + path.sep)) {
-        continue;
-      }
-
-      // Check package.json dependencies
-      if (path.basename(fileName) === "package.json") {
-        const manifest = await readJson<PackageManifest>(path.relative(repositoryRoot, fileName));
-        if (manifest.dependencies?.["decimal.js"] || manifest.devDependencies?.["decimal.js"] || manifest.peerDependencies?.["decimal.js"]) {
-          violations.push(`${path.relative(repositoryRoot, fileName)} declares decimal.js dependency`);
-        }
         continue;
       }
 

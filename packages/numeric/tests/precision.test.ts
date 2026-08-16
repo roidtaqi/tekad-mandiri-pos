@@ -55,6 +55,8 @@ describe("Precision and scale primitives", () => {
       assertErr(() => quantizeDecimal(val, 1.5, "HALF_UP"), "INVALID_SCALE");
       assertErr(() => quantizeDecimal(val, NaN, "HALF_UP"), "INVALID_SCALE");
       
+      assertErr(() => quantizeDecimal(val, Infinity, "HALF_UP"), "INVALID_SCALE");
+      
       // @ts-expect-error
       assertErr(() => quantizeDecimal(val, 2, "UNKNOWN"), "INVALID_ROUNDING_MODE");
     });
@@ -79,6 +81,26 @@ describe("Precision and scale primitives", () => {
     it("allows padding without rounding mode", () => {
       const val = parseDecimal("3500");
       expect(toFixedScale(val, 4)).toBe("3500.0000");
+    });
+
+    it("rejects invalid scale or rounding mode arguments", () => {
+      const val = parseDecimal("10.5");
+      const assertErr = (fn: () => void, code: string) => {
+        let err: any;
+        try { fn(); } catch (e) { err = e; }
+        expect(err).toBeInstanceOf(NumericError);
+        expect(err.code).toBe(code);
+      };
+
+      assertErr(() => toFixedScale(val, -1), "INVALID_SCALE");
+      assertErr(() => toFixedScale(val, 1.5), "INVALID_SCALE");
+      assertErr(() => toFixedScale(val, NaN), "INVALID_SCALE");
+      assertErr(() => toFixedScale(val, Infinity), "INVALID_SCALE");
+      
+      // @ts-expect-error
+      assertErr(() => toFixedScale(val, 2, ""), "INVALID_ROUNDING_MODE");
+      // @ts-expect-error
+      assertErr(() => toFixedScale(val, 2, null), "INVALID_ROUNDING_MODE");
     });
   });
 
@@ -125,11 +147,13 @@ describe("Precision and scale primitives", () => {
       assertErr(() => fitsPrecisionScale(val, 0, 0), "INVALID_PRECISION");
       assertErr(() => fitsPrecisionScale(val, 1.5, 0), "INVALID_PRECISION");
       assertErr(() => fitsPrecisionScale(val, NaN, 0), "INVALID_PRECISION");
+      assertErr(() => fitsPrecisionScale(val, Infinity, 0), "INVALID_PRECISION");
       
       assertErr(() => fitsPrecisionScale(val, 10, -1), "INVALID_SCALE");
       assertErr(() => fitsPrecisionScale(val, 10, 1.5), "INVALID_SCALE");
       assertErr(() => fitsPrecisionScale(val, 10, NaN), "INVALID_SCALE");
       assertErr(() => fitsPrecisionScale(val, 10, 11), "INVALID_SCALE");
+      assertErr(() => fitsPrecisionScale(val, 10, Infinity), "INVALID_SCALE");
     });
   });
 

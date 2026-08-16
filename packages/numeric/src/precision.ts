@@ -39,7 +39,7 @@ export function toFixedScale(
   validateDecimalPlaces(decimalPlaces);
   const d = fromStringSafe(value);
   
-  if (roundingMode) {
+  if (roundingMode !== undefined) {
     const mode = mapRoundingMode(roundingMode) as Decimal.Rounding;
     return d.toFixed(decimalPlaces, mode);
   }
@@ -49,7 +49,7 @@ export function toFixedScale(
   // We should enforce mode if it causes rounding, but if it doesn't, toFixed works.
   // Let's use a safe path if they just want to pad:
   // If toDecimalPlaces changes the value, then they NEED a rounding mode.
-  if (!roundingMode) {
+  if (roundingMode === undefined) {
     // If it has more decimal places than requested, it will round by default, which violates "explicit rounding mode".
     if (d.decimalPlaces() > decimalPlaces) {
       throw new NumericError(

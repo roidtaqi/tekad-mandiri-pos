@@ -4,8 +4,8 @@ import {
   decimalCompare, decimalAbs, decimalNegate, decimalIsZero, decimalIsPositive, decimalIsNegative 
 } from "../src/decimal.js";
 import { NumericError } from "../src/errors.js";
-import { parseMoney } from "../src/money.js";
-import { parseQuantity } from "../src/quantity.js";
+import { parseMoney, moneyAdd } from "../src/money.js";
+import { parseQuantity, quantityAdd } from "../src/quantity.js";
 import * as NumericAPI from "../src/index.js";
 
 describe("Decimal primitives", () => {
@@ -160,6 +160,31 @@ describe("Decimal primitives", () => {
 
     const tiny = "0.000000000000000000000000000001";
     expect(parseDecimal(tiny)).toBe(tiny);
+  });
+
+  it("strictly differentiates semantic brands at compile time", () => {
+    // These tests do not run logic that fails, but they trigger typescript type errors
+    // if the types are improperly defined.
+    const money = parseMoney("1");
+    const quantity = parseQuantity("1");
+    const decimalValue = parseDecimal("1");
+
+    if (false as boolean) {
+      // @ts-expect-error QuantityValue must not be MoneyValue
+      moneyAdd(money, quantity);
+      
+      // @ts-expect-error MoneyValue must not be QuantityValue
+      quantityAdd(quantity, money);
+
+      // @ts-expect-error DecimalValue must not be MoneyValue
+      moneyAdd(decimalValue, decimalValue);
+
+      // @ts-expect-error DecimalValue must not be QuantityValue
+      quantityAdd(decimalValue, decimalValue);
+    }
+    
+    // Test assertion is just to make vitest happy since this is mostly a compile time check.
+    expect(true).toBe(true);
   });
 
   it("does not expose internal configuration in public API", () => {
