@@ -32,7 +32,7 @@ export function mapRoundingMode(mode: RoundingModeKey): number {
     case RoundingMode.HALF_EVEN:
       return Decimal.ROUND_HALF_EVEN;
     default:
-      throw new NumericError(ERROR_CODES.INVALID_SCALE, `Invalid rounding mode: ${String(mode)}`);
+      throw new NumericError(ERROR_CODES.INVALID_ROUNDING_MODE, "Invalid rounding mode.");
   }
 }
 
@@ -41,7 +41,7 @@ export function fromStringSafe(value: string | unknown): Decimal {
     throw new NumericError(ERROR_CODES.INVALID_DECIMAL, "Decimal value must be parsed from a string");
   }
 
-  // Reject NaN, Infinity, scientific notation, leading zeros, etc.
+  // Reject NaN, Infinity, scientific notation, etc. (allows leading zeroes)
   if (!DECIMAL_REGEX.test(value)) {
     throw new NumericError(ERROR_CODES.INVALID_DECIMAL, `Invalid decimal string format: ${value}`);
   }
@@ -52,8 +52,8 @@ export function fromStringSafe(value: string | unknown): Decimal {
       throw new NumericError(ERROR_CODES.INVALID_DECIMAL, `Invalid decimal string: ${value}`);
     }
     return d;
-  } catch (err: any) {
-    throw new NumericError(ERROR_CODES.INVALID_DECIMAL, `Failed to parse decimal: ${err.message}`);
+  } catch {
+    throw new NumericError(ERROR_CODES.INVALID_DECIMAL, "Invalid decimal value.");
   }
 }
 

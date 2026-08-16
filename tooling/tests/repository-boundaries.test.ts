@@ -572,6 +572,7 @@ describe("TypeScript runtime boundaries", () => {
       "packages/config/tsconfig.json",
       "packages/contracts/tsconfig.json",
       "packages/domain/tsconfig.json",
+      "packages/numeric/tsconfig.json",
       "packages/observability/tsconfig.json",
     ]) {
       expect(loadTsConfig(configPath).options.types).toEqual([]);
@@ -589,7 +590,7 @@ describe("TypeScript runtime boundaries", () => {
 });
 
 describe("workspace package boundaries", () => {
-  it("keeps all 12 workspaces private with explicit shared entry points", async () => {
+  it("keeps all 13 workspaces private with explicit shared entry points", async () => {
     const rootManifest = await readJson<PackageManifest>("package.json");
     expect(rootManifest.workspaces).toEqual(["packages/*", "apps/*"]);
     expect(await discoverWorkspaceDirectories()).toEqual(
@@ -1204,16 +1205,28 @@ describe("numeric primitives boundary", () => {
     const files = [
       ...(await listCodeFiles("apps")),
       ...(await listCodeFiles("packages")),
+      ...(await listCodeFiles("database")),
     ];
 
     for (const fileName of files) {
-      // Allow the numeric package to import decimal.js
-      if (fileName.includes("packages/numeric/")) {
+      if (fileName.includes(path.sep + "numeric" + path.sep)) {
+        continue;
+      }
+
+      // Check package.json dependencies
+      if (path.basename(fileName) === "package.json") {
+        const manifest = await readJson<PackageManifest>(path.relative(repositoryRoot, fileName));
+        if (manifest.dependencies?.["decimal.js"] || manifest.devDependencies?.["decimal.js"] || manifest.peerDependencies?.["decimal.js"]) {
+          violations.push(`${path.relative(repositoryRoot, fileName)} declares decimal.js dependency`);
+        }
+        continue;
+      }
+
+      if (!fileName.endsWith(".ts") && !fileName.endsWith(".tsx") && !fileName.endsWith(".mjs")) {
         continue;
       }
 
       const sourceText = await readFile(fileName, "utf8");
-
       for (const specifier of getModuleSpecifiers(fileName, sourceText)) {
         if (specifier === "decimal.js" || specifier.startsWith("decimal.js/")) {
           violations.push(

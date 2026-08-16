@@ -4,17 +4,30 @@ import {
   decimalCompare, decimalAbs, decimalNegate, decimalIsZero, decimalIsPositive, decimalIsNegative 
 } from "../src/decimal.js";
 import { NumericError } from "../src/errors.js";
+import { parseMoney } from "../src/money.js";
+import { parseQuantity } from "../src/quantity.js";
+import * as NumericAPI from "../src/index.js";
 
 describe("Decimal primitives", () => {
   it("rejects non-string values at runtime", () => {
     // @ts-expect-error test
-    expect(() => parseDecimal(10)).toThrow(NumericError);
+    expect(() => parseDecimal(10)).toThrowError(NumericError);
     // @ts-expect-error test
-    expect(() => parseDecimal(null)).toThrow(NumericError);
+    expect(() => parseDecimal(true)).toThrowError(NumericError);
     // @ts-expect-error test
-    expect(() => parseDecimal(undefined)).toThrow(NumericError);
+    expect(() => parseDecimal(null)).toThrowError(NumericError);
     // @ts-expect-error test
-    expect(() => parseDecimal({})).toThrow(NumericError);
+    expect(() => parseDecimal(undefined)).toThrowError(NumericError);
+    // @ts-expect-error test
+    expect(() => parseDecimal({})).toThrowError(NumericError);
+    // @ts-expect-error test
+    expect(() => parseDecimal([])).toThrowError(NumericError);
+
+    // Also assert for parseMoney and parseQuantity
+    // @ts-expect-error test
+    expect(() => parseMoney(10)).toThrowError(NumericError);
+    // @ts-expect-error test
+    expect(() => parseQuantity(10)).toThrowError(NumericError);
   });
 
   it("rejects exponential notation, NaN, and Infinity", () => {
@@ -30,6 +43,10 @@ describe("Decimal primitives", () => {
     expect(() => parseDecimal(" ")).toThrow(NumericError);
     expect(() => parseDecimal(" 1")).toThrow(NumericError);
     expect(() => parseDecimal("1 ")).toThrow(NumericError);
+    expect(() => parseDecimal("\n1")).toThrow(NumericError);
+    expect(() => parseDecimal("1\n")).toThrow(NumericError);
+    expect(() => parseDecimal("\t1")).toThrow(NumericError);
+    expect(() => parseDecimal("1\t")).toThrow(NumericError);
     expect(() => parseDecimal("+1")).toThrow(NumericError);
     expect(() => parseDecimal(".5")).toThrow(NumericError);
     expect(() => parseDecimal("1.")).toThrow(NumericError);
@@ -66,12 +83,11 @@ describe("Decimal primitives", () => {
     expect(decimalAdd(huge, one)).toBe("9007199254740994");
   });
 
-  it("handles high precision division", () => {
+  it("handles high precision division locking 80 guard precision", () => {
     const one = parseDecimal("1");
     const three = parseDecimal("3");
     const div = decimalDivide(one, three);
-    // Should have up to 80 digits
-    expect(div.startsWith("0.33333333333333333333")).toBe(true);
+    expect(div).toBe("0." + "3".repeat(80));
   });
 
   it("handles Costing precision example division without rounding", () => {
@@ -104,7 +120,7 @@ describe("Decimal primitives", () => {
     expect(decimalCompare(a, a)).toBe(0);
   });
 
-  it("supports abs and negate", () => {
+  it("supports abs and negate and never emits -0", () => {
     const a = parseDecimal("-10.5");
     expect(decimalAbs(a)).toBe("10.5");
     expect(decimalNegate(a)).toBe("10.5");
@@ -112,6 +128,12 @@ describe("Decimal primitives", () => {
     const b = parseDecimal("10.5");
     expect(decimalAbs(b)).toBe("10.5");
     expect(decimalNegate(b)).toBe("-10.5");
+
+    const zero = parseDecimal("0");
+    expect(decimalNegate(zero)).toBe("0");
+
+    const negZero = parseDecimal("-0");
+    expect(decimalMultiply(negZero, parseDecimal("100"))).toBe("0");
   });
 
   it("supports predicates", () => {
@@ -130,5 +152,20 @@ describe("Decimal primitives", () => {
     expect(decimalIsZero(neg)).toBe(false);
     expect(decimalIsPositive(neg)).toBe(false);
     expect(decimalIsNegative(neg)).toBe(true);
+  });
+
+  it("never serializes with exponent notation", () => {
+    const huge = "1000000000000000000000000000000";
+    expect(parseDecimal(huge)).toBe(huge);
+
+    const tiny = "0.000000000000000000000000000001";
+    expect(parseDecimal(tiny)).toBe(tiny);
+  });
+
+  it("does not expose internal configuration in public API", () => {
+    expect(NumericAPI).not.toHaveProperty("Decimal");
+    expect(NumericAPI).not.toHaveProperty("KasturDecimal");
+    expect(NumericAPI).not.toHaveProperty("fromStringSafe");
+    expect(NumericAPI).not.toHaveProperty("mapRoundingMode");
   });
 });

@@ -3,11 +3,29 @@ import { fromStringSafe, mapRoundingMode, toCanonicalString } from "./decimal-en
 import { Decimal } from "decimal.js";
 import { NumericError, ERROR_CODES } from "./errors.js";
 
+const GUARD_PRECISION = 80;
+
+function validateDecimalPlaces(decimalPlaces: number): void {
+  if (!Number.isSafeInteger(decimalPlaces) || decimalPlaces < 0 || decimalPlaces > GUARD_PRECISION) {
+    throw new NumericError(ERROR_CODES.INVALID_SCALE, `Invalid decimal places: ${decimalPlaces}`);
+  }
+}
+
+function validatePrecisionScaleConfiguration(precision: number, scale: number): void {
+  if (!Number.isSafeInteger(precision) || precision <= 0) {
+    throw new NumericError(ERROR_CODES.INVALID_PRECISION, `Invalid precision: ${precision}`);
+  }
+  if (!Number.isSafeInteger(scale) || scale < 0 || scale > precision) {
+    throw new NumericError(ERROR_CODES.INVALID_SCALE, `Invalid scale: ${scale}`);
+  }
+}
+
 export function quantizeDecimal(
   value: DecimalValue,
   decimalPlaces: number,
   roundingMode: RoundingModeKey
 ): DecimalValue {
+  validateDecimalPlaces(decimalPlaces);
   const d = fromStringSafe(value);
   const mode = mapRoundingMode(roundingMode) as Decimal.Rounding;
   return toCanonicalString(d.toDecimalPlaces(decimalPlaces, mode)) as DecimalValue;
@@ -18,6 +36,7 @@ export function toFixedScale(
   decimalPlaces: number,
   roundingMode?: RoundingModeKey
 ): string {
+  validateDecimalPlaces(decimalPlaces);
   const d = fromStringSafe(value);
   
   if (roundingMode) {
@@ -49,6 +68,7 @@ export function fitsPrecisionScale(
   precision: number,
   scale: number
 ): boolean {
+  validatePrecisionScaleConfiguration(precision, scale);
   const d = fromStringSafe(value);
   
   // If it has more fractional digits than scale, it doesn't fit

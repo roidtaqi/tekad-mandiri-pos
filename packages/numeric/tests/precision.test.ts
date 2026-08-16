@@ -19,8 +19,11 @@ describe("Precision and scale primitives", () => {
 
       // HALF_EVEN
       expect(quantizeDecimal(posTie, 2, "HALF_EVEN")).toBe("10"); // 10 is even
+      expect(quantizeDecimal(negTie, 2, "HALF_EVEN")).toBe("-10"); // -10 is even
       const posTie2 = parseDecimal("10.015");
+      const negTie2 = parseDecimal("-10.015");
       expect(quantizeDecimal(posTie2, 2, "HALF_EVEN")).toBe("10.02"); // 10.02 is even
+      expect(quantizeDecimal(negTie2, 2, "HALF_EVEN")).toBe("-10.02"); // -10.02 is even
 
       // UP (away from zero)
       expect(quantizeDecimal(posTie, 2, "UP")).toBe("10.01");
@@ -37,6 +40,23 @@ describe("Precision and scale primitives", () => {
       // FLOOR (towards -Infinity)
       expect(quantizeDecimal(posTie, 2, "FLOOR")).toBe("10");
       expect(quantizeDecimal(negTie, 2, "FLOOR")).toBe("-10.01");
+    });
+
+    it("rejects invalid scale or rounding mode arguments", () => {
+      const val = parseDecimal("10.5");
+      const assertErr = (fn: () => void, code: string) => {
+        let err: any;
+        try { fn(); } catch (e) { err = e; }
+        expect(err).toBeInstanceOf(NumericError);
+        expect(err.code).toBe(code);
+      };
+
+      assertErr(() => quantizeDecimal(val, -1, "HALF_UP"), "INVALID_SCALE");
+      assertErr(() => quantizeDecimal(val, 1.5, "HALF_UP"), "INVALID_SCALE");
+      assertErr(() => quantizeDecimal(val, NaN, "HALF_UP"), "INVALID_SCALE");
+      
+      // @ts-expect-error
+      assertErr(() => quantizeDecimal(val, 2, "UNKNOWN"), "INVALID_ROUNDING_MODE");
     });
   });
 
@@ -91,6 +111,25 @@ describe("Precision and scale primitives", () => {
 
       // fraction requiring rounding -> rejected
       expect(fitsPrecisionScale(parseDecimal("0.123456789"), precision, scale)).toBe(false);
+    });
+
+    it("throws on invalid precision or scale configuration", () => {
+      const val = parseDecimal("1");
+      const assertErr = (fn: () => void, code: string) => {
+        let err: any;
+        try { fn(); } catch (e) { err = e; }
+        expect(err).toBeInstanceOf(NumericError);
+        expect(err.code).toBe(code);
+      };
+
+      assertErr(() => fitsPrecisionScale(val, 0, 0), "INVALID_PRECISION");
+      assertErr(() => fitsPrecisionScale(val, 1.5, 0), "INVALID_PRECISION");
+      assertErr(() => fitsPrecisionScale(val, NaN, 0), "INVALID_PRECISION");
+      
+      assertErr(() => fitsPrecisionScale(val, 10, -1), "INVALID_SCALE");
+      assertErr(() => fitsPrecisionScale(val, 10, 1.5), "INVALID_SCALE");
+      assertErr(() => fitsPrecisionScale(val, 10, NaN), "INVALID_SCALE");
+      assertErr(() => fitsPrecisionScale(val, 10, 11), "INVALID_SCALE");
     });
   });
 
