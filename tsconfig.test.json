@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./tsconfig.node.json",
+  "include": [
+    "packages/*/src/**/*.test.ts",
+    "packages/*/src/**/*.test.tsx",
+    "packages/*/tests/**/*.test.ts",
+    "packages/*/tests/**/*.test.tsx",
+    "tooling/tests/**/*.ts"
+  ]
+}

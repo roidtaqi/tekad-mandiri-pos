@@ -1,5 +1,9 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
-  "extends": "./tsconfig.base.json",
-  "files": []
+  "extends": "./tsconfig.node.json",
+  "include": [
+    "apps/*/vite.config.ts",
+    "tooling/vite/**/*.ts",
+    "vitest.config.ts"
+  ]
 }

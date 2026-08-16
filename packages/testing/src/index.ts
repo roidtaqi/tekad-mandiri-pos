@@ -1,2 +1,2 @@
-/** Reusable testing helpers will be added only when concrete tests need them. */
+/** Reusable test helpers will be exported only when concretely shared. */
 export {};

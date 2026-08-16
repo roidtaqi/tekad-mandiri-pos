@@ -1,2 +1,2 @@
-/** Configuration conventions are intentionally deferred to M0-002. */
+/** Public configuration primitives will be exported only when concretely needed. */
 export {};

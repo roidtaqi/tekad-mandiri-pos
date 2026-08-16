@@ -1,0 +1,20 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "error"
+  },
+  "ignorePatterns": ["**/coverage/**", "**/dist/**", "**/node_modules/**"],
+  "rules": {
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "message": "Import Kastur workspaces through an explicitly exported public entry point.",
+            "regex": "^@kastur/[^/]+/.+"
+          }
+        ]
+      }
+    ]
+  }
+}
