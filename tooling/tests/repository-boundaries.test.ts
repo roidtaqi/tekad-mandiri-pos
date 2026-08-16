@@ -26,6 +26,12 @@ interface WorkspaceDefinition {
   shared: boolean;
 }
 
+interface TypeScriptConfigFile {
+  exclude?: string[];
+  extends?: string;
+  include?: string[];
+}
+
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../..",
@@ -209,7 +215,9 @@ function getModuleSpecifiers(fileName: string, sourceText: string): string[] {
 
     if (
       ts.isCallExpression(node) &&
-      node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+      (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+        (ts.isIdentifier(node.expression) &&
+          node.expression.text === "require")) &&
       node.arguments.length === 1
     ) {
       const [argument] = node.arguments;
@@ -224,6 +232,37 @@ function getModuleSpecifiers(fileName: string, sourceText: string): string[] {
 
   visit(sourceFile);
   return specifiers;
+}
+
+function getIdentifierNames(fileName: string, sourceText: string): Set<string> {
+  const sourceFile = ts.createSourceFile(
+    fileName,
+    sourceText,
+    ts.ScriptTarget.Latest,
+    true,
+    fileName.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+  );
+  const identifiers = new Set<string>();
+
+  function visit(node: ts.Node): void {
+    if (ts.isIdentifier(node)) {
+      identifiers.add(node.text);
+    }
+
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return identifiers;
+}
+
+function isPathWithin(parentDirectory: string, candidatePath: string): boolean {
+  const relativePath = path.relative(parentDirectory, candidatePath);
+
+  return (
+    relativePath === "" ||
+    (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
+  );
 }
 
 function loadTsConfig(relativePath: string): ts.ParsedCommandLine {
@@ -366,6 +405,72 @@ describe("TypeScript runtime boundaries", () => {
     ).toBe(true);
     expect(diagnostics).toHaveLength(1);
     expect(diagnostics.join("\n")).toContain("process");
+  });
+
+  it("keeps local-db production browser-only and its tests in a dedicated program", async () => {
+    const productionConfig = await readJson<TypeScriptConfigFile>(
+      "packages/local-db/tsconfig.json",
+    );
+    const testConfig = await readJson<TypeScriptConfigFile>(
+      "packages/local-db/tsconfig.test.json",
+    );
+    const rootTestConfig = await readJson<TypeScriptConfigFile>(
+      "tsconfig.test.json",
+    );
+    const productionFiles = loadTsConfig(
+      "packages/local-db/tsconfig.json",
+    ).fileNames.map((fileName) => path.relative(repositoryRoot, fileName));
+    const rootNodeTests = loadTsConfig("tsconfig.test.json").fileNames.map(
+      (fileName) => path.relative(repositoryRoot, fileName),
+    );
+    const nodeOnlyGlobals = [
+      "Buffer",
+      "__dirname",
+      "__filename",
+      "clearImmediate",
+      "global",
+      "module",
+      "process",
+      "require",
+      "setImmediate",
+    ];
+    const diagnostics = compileProbe(
+      "packages/local-db/tsconfig.json",
+      [
+        "void indexedDB;",
+        "void IDBKeyRange;",
+        ...nodeOnlyGlobals.map((globalName) => `void ${globalName};`),
+      ].join("\n"),
+    );
+
+    expect(
+      productionFiles.every((fileName) =>
+        fileName.startsWith("packages/local-db/src/"),
+      ),
+    ).toBe(true);
+    expect(
+      productionFiles.some((fileName) => /\.(?:test|spec)\./u.test(fileName)),
+    ).toBe(false);
+    expect(productionConfig.extends).toBe("../../tsconfig.browser.json");
+    expect(testConfig.extends).toBe("../../tsconfig.browser.json");
+    expect(productionConfig.include).toContain("src");
+    expect(
+      productionConfig.include?.some((include) => include.includes("tests")),
+    ).toBe(false);
+    expect(testConfig.include).toEqual(
+      expect.arrayContaining(["src", "tests"]),
+    );
+    expect(rootTestConfig.exclude).toContain("packages/local-db/**");
+    expect(
+      rootNodeTests.some((fileName) =>
+        fileName.startsWith("packages/local-db/"),
+      ),
+    ).toBe(false);
+    expect(diagnostics).toHaveLength(nodeOnlyGlobals.length);
+
+    for (const globalName of nodeOnlyGlobals) {
+      expect(diagnostics.join("\n")).toContain(globalName);
+    }
   });
 
   it("allows configured Worker APIs without exposing browser-only DOM globals", () => {
@@ -697,6 +802,190 @@ describe("workspace package boundaries", () => {
               `${path.relative(repositoryRoot, fileName)} imports ${specifier}`,
             );
           }
+        }
+      }
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("keeps Dexie and IndexedDB access behind the browser-only local-db boundary", async () => {
+    const localDbWorkspace = workspaces.find(
+      ({ name }) => name === "@kastur/local-db",
+    );
+
+    expect(localDbWorkspace).toBeDefined();
+
+    if (localDbWorkspace === undefined) {
+      return;
+    }
+
+    const localDbManifest = await readJson<PackageManifest>(
+      path.join(localDbWorkspace.directory, "package.json"),
+    );
+    const localDbRuntimeDependencies = {
+      ...localDbManifest.dependencies,
+      ...localDbManifest.optionalDependencies,
+      ...localDbManifest.peerDependencies,
+    };
+    const localDbRoot = path.join(repositoryRoot, localDbWorkspace.directory);
+    const violations: string[] = [];
+
+    expect(localDbManifest.dependencies).toHaveProperty("dexie");
+    expect(localDbManifest.devDependencies).toHaveProperty("fake-indexeddb");
+    expect(localDbRuntimeDependencies).not.toHaveProperty("fake-indexeddb");
+
+    for (const dependency of Object.keys(localDbRuntimeDependencies)) {
+      if (dependency.startsWith("@kastur/")) {
+        violations.push(
+          `${localDbWorkspace.directory} has runtime dependency ${dependency}`,
+        );
+      }
+    }
+
+    for (const workspace of workspaces) {
+      const manifest = await readJson<PackageManifest>(
+        path.join(workspace.directory, "package.json"),
+      );
+      const declaredDependencies = {
+        ...manifest.dependencies,
+        ...manifest.devDependencies,
+        ...manifest.optionalDependencies,
+        ...manifest.peerDependencies,
+      };
+
+      if (
+        workspace.name !== localDbWorkspace.name &&
+        (declaredDependencies.dexie !== undefined ||
+          declaredDependencies["fake-indexeddb"] !== undefined)
+      ) {
+        violations.push(
+          `${workspace.directory} depends directly on Dexie tooling`,
+        );
+      }
+
+      for (const fileName of await listCodeFiles(workspace.directory)) {
+        const sourceText = await readFile(fileName, "utf8");
+
+        for (const specifier of getModuleSpecifiers(fileName, sourceText)) {
+          if (
+            workspace.name !== localDbWorkspace.name &&
+            (specifier === "dexie" ||
+              specifier.startsWith("dexie/") ||
+              specifier === "fake-indexeddb" ||
+              specifier.startsWith("fake-indexeddb/"))
+          ) {
+            violations.push(
+              `${path.relative(repositoryRoot, fileName)} imports ${specifier}`,
+            );
+          }
+
+          const resolvedImport = specifier.startsWith(".")
+            ? path.resolve(path.dirname(fileName), specifier)
+            : undefined;
+
+          if (
+            workspace.name === "@kastur/api" &&
+            (specifier === "@kastur/local-db" ||
+              specifier.startsWith("@kastur/local-db/") ||
+              (resolvedImport !== undefined &&
+                isPathWithin(localDbRoot, resolvedImport)))
+          ) {
+            violations.push(
+              `${path.relative(repositoryRoot, fileName)} reaches @kastur/local-db through ${specifier}`,
+            );
+          }
+        }
+      }
+
+      if (
+        workspace.name === "@kastur/api" &&
+        declaredDependencies["@kastur/local-db"] !== undefined
+      ) {
+        violations.push(`${workspace.directory} depends on @kastur/local-db`);
+      }
+    }
+
+    const productionFiles = loadTsConfig(
+      "packages/local-db/tsconfig.json",
+    ).fileNames;
+    const nodeOnlyGlobals = [
+      "Buffer",
+      "__dirname",
+      "__filename",
+      "clearImmediate",
+      "global",
+      "module",
+      "process",
+      "require",
+      "setImmediate",
+    ];
+
+    for (const fileName of productionFiles) {
+      const sourceText = await readFile(fileName, "utf8");
+
+      for (const specifier of getModuleSpecifiers(fileName, sourceText)) {
+        const normalizedSpecifier = specifier.startsWith("node:")
+          ? specifier.slice(5)
+          : specifier;
+
+        if (
+          specifier.startsWith("node:") ||
+          nodeBuiltins.has(normalizedSpecifier) ||
+          nodeBuiltins.has(normalizedSpecifier.split("/")[0] ?? "")
+        ) {
+          violations.push(
+            `${path.relative(repositoryRoot, fileName)} imports Node builtin ${specifier}`,
+          );
+        }
+
+        if (specifier.startsWith("@kastur/")) {
+          violations.push(
+            `${path.relative(repositoryRoot, fileName)} imports ${specifier}`,
+          );
+        }
+
+        if (
+          specifier === "fake-indexeddb" ||
+          specifier.startsWith("fake-indexeddb/")
+        ) {
+          violations.push(
+            `${path.relative(repositoryRoot, fileName)} imports test-only ${specifier}`,
+          );
+        }
+      }
+
+      const identifiers = getIdentifierNames(fileName, sourceText);
+
+      for (const globalName of nodeOnlyGlobals) {
+        if (identifiers.has(globalName)) {
+          violations.push(
+            `${path.relative(repositoryRoot, fileName)} uses Node global ${globalName}`,
+          );
+        }
+      }
+    }
+
+    for (const fileName of await listCodeFiles("database")) {
+      const sourceText = await readFile(fileName, "utf8");
+
+      for (const specifier of getModuleSpecifiers(fileName, sourceText)) {
+        const resolvedImport = specifier.startsWith(".")
+          ? path.resolve(path.dirname(fileName), specifier)
+          : undefined;
+        if (
+          specifier === "dexie" ||
+          specifier.startsWith("dexie/") ||
+          specifier === "fake-indexeddb" ||
+          specifier.startsWith("fake-indexeddb/") ||
+          specifier === "@kastur/local-db" ||
+          specifier.startsWith("@kastur/local-db/") ||
+          (resolvedImport !== undefined &&
+            isPathWithin(localDbRoot, resolvedImport))
+        ) {
+          violations.push(
+            `${path.relative(repositoryRoot, fileName)} reaches @kastur/local-db through ${specifier}`,
+          );
         }
       }
     }

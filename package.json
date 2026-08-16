@@ -27,6 +27,7 @@
     "lint": "oxlint --config .oxlintrc.json --deny-warnings .",
     "test": "vitest run --config vitest.config.ts",
     "test:database": "node database/scripts/require-test-database.mjs && vitest run --config vitest.config.ts --project database-integration",
+    "test:local-db": "npm run test --workspace @kastur/local-db",
     "test:ui": "vitest run --config vitest.config.ts --project ui",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit && tsc -p database/tsconfig.json --noEmit && npm run typecheck --workspaces"
   },

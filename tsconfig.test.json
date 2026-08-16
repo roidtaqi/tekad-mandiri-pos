@@ -8,5 +8,5 @@
     "packages/*/tests/**/*.test.tsx",
     "tooling/tests/**/*.ts"
   ],
-  "exclude": ["packages/ui/**"]
+  "exclude": ["packages/local-db/**", "packages/ui/**"]
 }

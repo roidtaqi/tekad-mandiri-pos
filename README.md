@@ -2,7 +2,7 @@
 
 Kastur Retail System v2 is a new, offline-first retail-system rebuild. This repository is the v2 monorepo; the legacy `inventory-pricing-app` and `integrated-pos-app` repositories are reference and migration sources only.
 
-M0-004 adds the shared design-token and UI-primitive foundation used by both frontend placeholders. It contains no business screens or workflows. The existing M0-003 Worker boundary and forward-only PostgreSQL migration harness remain unchanged.
+M0-005 adds the shared Dexie/IndexedDB lifecycle and migration-test foundation. It contains no business stores, repositories, outbox, or sync implementation. The existing M0-003 Worker/PostgreSQL infrastructure and M0-004 UI foundation remain unchanged.
 
 ## Repository layout
 
@@ -52,6 +52,8 @@ Back Office and POS share only the minimal React Vite baseline under `tooling/vi
 
 Vitest uses named, runtime-explicit projects in `vitest.config.ts`. Current frontend tests use server rendering in Node, API tests use Node's Web Fetch implementation as a unit-test harness, and repository-boundary tests validate the production TypeScript runtime assumptions separately. Package tests are discovered across `packages/*` in a fast Node unit-test project. `@kastur/ui` behavior runs in its own lightweight browser-like project so DOM assumptions never leak into unrelated packages.
 
+`@kastur/local-db` is the sole Dexie owner. It exposes explicit, non-opening factories for the separate `kastur-pos` and `kastur-backoffice` IndexedDB databases. Both currently use schema version 1 with no production object stores; future vertical slices must append versions without rewriting released declarations. Migration behavior is tested in a dedicated project against an isolated in-memory IndexedDB implementation. See [the local database package guide](./packages/local-db/README.md) for lifecycle and upgrade rules.
+
 `@kastur/config` is reserved for concrete validated non-secret runtime configuration primitives. `@kastur/testing` is reserved for concrete reusable test helpers. Their local READMEs define the intentionally narrow boundaries; neither package exports speculative APIs in M0-002.
 
 ## Shared UI foundation
@@ -98,6 +100,8 @@ npm run dev:ui
 ```
 
 Run the browser-like UI behavior suite independently with `npm run test:ui`.
+
+Run the IndexedDB lifecycle and migration suite independently with `npm run test:local-db`. It uses test-only neutral stores and does not read or modify a developer browser profile.
 
 For local API runtime and type verification:
 

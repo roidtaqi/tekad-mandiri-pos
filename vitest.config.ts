@@ -47,7 +47,7 @@ export default defineConfig({
         root: repositoryRoot,
         test: {
           ...testDefaults,
-          exclude: ["packages/ui/**"],
+          exclude: ["packages/local-db/**", "packages/ui/**"],
           environment: "node",
           include: [
             "packages/*/src/**/*.test.{ts,tsx}",
@@ -63,6 +63,15 @@ export default defineConfig({
           environment: "happy-dom",
           include: ["tests/**/*.test.{ts,tsx}"],
           name: "ui",
+        },
+      },
+      {
+        root: fileURLToPath(new URL("./packages/local-db/", import.meta.url)),
+        test: {
+          ...testDefaults,
+          environment: "node",
+          include: ["tests/**/*.test.ts"],
+          name: "local-db",
         },
       },
       {

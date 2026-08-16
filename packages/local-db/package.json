@@ -13,9 +13,13 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "test": "vitest run --config ../../vitest.config.ts --project local-db",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit"
   },
   "dependencies": {
     "dexie": "^4.4.5"
+  },
+  "devDependencies": {
+    "fake-indexeddb": "6.2.5"
   }
 }
