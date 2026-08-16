@@ -63,6 +63,11 @@ const workspaces: WorkspaceDefinition[] = [
     shared: true,
   },
   {
+    directory: "packages/numeric",
+    name: "@kastur/numeric",
+    shared: true,
+  },
+  {
     directory: "packages/observability",
     name: "@kastur/observability",
     shared: true,
@@ -1182,5 +1187,42 @@ describe("shared frontend build conventions", () => {
     expect(sharedConfig).not.toHaveProperty("root");
     expect(sharedConfig).not.toHaveProperty("build");
     expect(sharedConfig).not.toHaveProperty("define");
+  });
+});
+
+describe("numeric primitives boundary", () => {
+  it("keeps decimal.js isolated to the numeric package", async () => {
+    const numericWorkspace = workspaces.find(({ name }) => name === "@kastur/numeric");
+
+    expect(numericWorkspace).toBeDefined();
+
+    if (numericWorkspace === undefined) {
+      return;
+    }
+
+    const violations: string[] = [];
+    const files = [
+      ...(await listCodeFiles("apps")),
+      ...(await listCodeFiles("packages")),
+    ];
+
+    for (const fileName of files) {
+      // Allow the numeric package to import decimal.js
+      if (fileName.includes("packages/numeric/")) {
+        continue;
+      }
+
+      const sourceText = await readFile(fileName, "utf8");
+
+      for (const specifier of getModuleSpecifiers(fileName, sourceText)) {
+        if (specifier === "decimal.js" || specifier.startsWith("decimal.js/")) {
+          violations.push(
+            `${path.relative(repositoryRoot, fileName)} imports ${specifier}`
+          );
+        }
+      }
+    }
+
+    expect(violations).toEqual([]);
   });
 });
