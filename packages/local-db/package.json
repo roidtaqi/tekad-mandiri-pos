@@ -1,0 +1,21 @@
+{
+  "name": "@kastur/local-db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Dexie-backed local persistence boundary for Kastur clients.",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "dexie": "^4.4.5"
+  }
+}

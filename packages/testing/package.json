@@ -1,0 +1,29 @@
+{
+  "name": "@kastur/testing",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared test support and cross-workspace smoke-test boundary.",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@kastur/auth-client": "*",
+    "@kastur/config": "*",
+    "@kastur/contracts": "*",
+    "@kastur/domain": "*",
+    "@kastur/local-db": "*",
+    "@kastur/observability": "*",
+    "@kastur/sync-client": "*",
+    "@kastur/ui": "*"
+  }
+}
