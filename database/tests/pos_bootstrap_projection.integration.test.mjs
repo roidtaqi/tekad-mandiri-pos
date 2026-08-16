@@ -134,6 +134,18 @@ describeWithPostgres("POS Catalog Bootstrap Projection Integration", () => {
       INSERT INTO catalog.products (id, business_id, sku, name, category_id, base_unit_code, track_inventory, status)
       VALUES ($1, $2, 'SKU-B2', 'Product B2', $3, 'BOX', false, 'INACTIVE')
     `, [pId2, bId2, cId2]);
+
+    const puId2 = "00000000-0000-0000-0000-000000000008";
+    await client?.query(`
+      INSERT INTO catalog.product_units (id, business_id, product_id, unit_code, display_name, conversion_factor, can_sell, can_purchase, allow_decimal_qty, status)
+      VALUES ($1, $2, $3, 'BOX', 'Boxes B2', 1, true, true, false, 'ACTIVE')
+    `, [puId2, bId2, pId2]);
+
+    const bcId2 = "00000000-0000-0000-0000-000000000009";
+    await client?.query(`
+      INSERT INTO catalog.barcodes (id, business_id, product_unit_id, barcode, is_internal, status)
+      VALUES ($1, $2, $3, '111-B2', false, 'ACTIVE')
+    `, [bcId2, bId2, puId2]);
   });
 
   it("1. builds correct bootstrap snapshot preserving ACTIVE/INACTIVE", async () => {
@@ -214,8 +226,17 @@ describeWithPostgres("POS Catalog Bootstrap Projection Integration", () => {
     if (!p1) throw new Error("Missing product");
     expect(p1.sku).toBe("SKU-B2");
 
-    expect(snap.product_units).toHaveLength(0);
-    expect(snap.barcodes).toHaveLength(0);
+    expect(snap.product_units).toHaveLength(1);
+    const pu1 = snap.product_units[0];
+    expect(pu1).toBeDefined();
+    if (!pu1) throw new Error("Missing product unit");
+    expect(pu1.unit_code).toBe("BOX");
+
+    expect(snap.barcodes).toHaveLength(1);
+    const bc1 = snap.barcodes[0];
+    expect(bc1).toBeDefined();
+    if (!bc1) throw new Error("Missing barcode");
+    expect(bc1.barcode).toBe("111-B2");
   });
 
   it("3. requires workspace.pos.access", async () => {

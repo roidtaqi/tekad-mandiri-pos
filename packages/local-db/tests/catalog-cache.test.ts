@@ -34,6 +34,17 @@ describe("POS Catalog Cache Bootstrap", () => {
     await db.open();
   });
 
+  async function expectBusinessCatalogEmpty(database: PosLocalDatabase, businessId: string) {
+    const products = await database.catalog.listProducts(businessId);
+    expect(products).toHaveLength(0);
+    const units = await database.catalog.listProductUnits(businessId);
+    expect(units).toHaveLength(0);
+    const barcodes = await database.catalog.listBarcodes(businessId);
+    expect(barcodes).toHaveLength(0);
+    const state = await database.catalog.getBootstrapState(businessId);
+    expect(state).toBeNull();
+  }
+
   const createSnapshot = (
     businessId: string,
     overrides?: Partial<PosCatalogBootstrapSnapshot>
@@ -110,6 +121,8 @@ describe("POS Catalog Cache Bootstrap", () => {
     const snap = createSnapshot(businessA);
     const unsafeSnap = { ...snap } as any;
     unsafeSnap.products[0]!.cost = 1000;
+    unsafeSnap.products[0]!.price = 2000;
+    unsafeSnap.products[0]!.margin = 50;
     unsafeSnap.products[0]!.stock = 50;
     unsafeSnap.products[0]!.supplier = "Acme";
 
@@ -118,6 +131,8 @@ describe("POS Catalog Cache Bootstrap", () => {
     const products = await db.catalog.listProducts(businessA);
     expect(products).toHaveLength(1);
     expect(products[0]).not.toHaveProperty("cost");
+    expect(products[0]).not.toHaveProperty("price");
+    expect(products[0]).not.toHaveProperty("margin");
     expect(products[0]).not.toHaveProperty("stock");
     expect(products[0]).not.toHaveProperty("supplier");
   });
@@ -131,13 +146,26 @@ describe("POS Catalog Cache Bootstrap", () => {
     );
   });
 
-  it("isolates multiple businesses safely", async () => {
-    const snapA = createSnapshot(businessA);
+  it("isolates multiple businesses safely with same SKU", async () => {
+    const snapA = createSnapshot(businessA, {
+      products: [
+        {
+          id: "p1",
+          sku: "SKU-SAME",
+          name: "Product 1 A",
+          base_unit_code: "PCS",
+          track_inventory: true,
+          status: "ACTIVE",
+          version: "v1",
+          updated_at: "2026-08-17T00:00:00Z",
+        },
+      ],
+    });
     const snapB = createSnapshot(businessB, {
       products: [
         {
           id: "p2",
-          sku: "SKU-2",
+          sku: "SKU-SAME",
           name: "Product 2 B",
           base_unit_code: "BOX",
           track_inventory: false,
@@ -165,7 +193,7 @@ describe("POS Catalog Cache Bootstrap", () => {
         {
           id: "b2",
           product_unit_id: "u2",
-          barcode: "00123", // same barcode, different business
+          barcode: "00123", // same active barcode, different business
           is_internal: false,
           status: "ACTIVE",
           deactivated_at: null,
@@ -178,10 +206,12 @@ describe("POS Catalog Cache Bootstrap", () => {
 
     const productsA = await db.catalog.listProducts(businessA);
     expect(productsA).toHaveLength(1);
+    expect(productsA[0]!.sku).toBe("SKU-SAME");
     expect(productsA[0]!.id).toBe("p1");
 
     const productsB = await db.catalog.listProducts(businessB);
     expect(productsB).toHaveLength(1);
+    expect(productsB[0]!.sku).toBe("SKU-SAME");
     expect(productsB[0]!.id).toBe("p2");
 
     const barcodesA = await db.catalog.listBarcodes(businessA);
@@ -214,9 +244,7 @@ describe("POS Catalog Cache Bootstrap", () => {
     };
 
     await expect(db.catalog.applyInitialBootstrap(badSnap)).rejects.toThrow("Dangling ProductUnit.product_id");
-
-    const products = await db.catalog.listProducts(businessA);
-    expect(products).toHaveLength(0); // Nothing written
+    await expectBusinessCatalogEmpty(db, businessA);
   });
 
   it("handles duplicate ACTIVE barcodes in the same snapshot by failing", async () => {
@@ -236,51 +264,50 @@ describe("POS Catalog Cache Bootstrap", () => {
       ]
     };
     await expect(db.catalog.applyInitialBootstrap(badSnap)).rejects.toThrow("Duplicate ACTIVE barcode for same business");
+    await expectBusinessCatalogEmpty(db, businessA);
   });
 
-  it("allows INACTIVE and ACTIVE same barcode in the same snapshot", async () => {
+  it("exact same-business barcode text proof allows '00123' and '123' + INACTIVE '00123'", async () => {
     const snap = createSnapshot(businessA);
     const okSnap = {
       ...snap,
       barcodes: [
-        ...snap.barcodes, // b1 is ACTIVE '00123'
-        {
-          id: "b2",
-          product_unit_id: "u1",
-          barcode: "00123", // Same barcode, but INACTIVE
-          is_internal: false,
-          status: "INACTIVE" as const,
-          deactivated_at: "2026-08-17T00:00:00Z",
-        }
+        { ...snap.barcodes[0], id: "b1", barcode: "00123", status: "ACTIVE" } as any,
+        { ...snap.barcodes[0], id: "b2", barcode: "123", status: "ACTIVE" } as any,
+        { ...snap.barcodes[0], id: "b3", barcode: "00123", status: "INACTIVE" } as any,
       ]
     };
     await expect(db.catalog.applyInitialBootstrap(okSnap)).resolves.not.toThrow();
     
     const barcodes = await db.catalog.listBarcodes(businessA);
-    expect(barcodes).toHaveLength(2);
+    expect(barcodes).toHaveLength(3);
+    const returnedTexts = barcodes.map(b => b.barcode);
+    expect(returnedTexts).toContain("00123");
+    expect(returnedTexts).toContain("123");
   });
 
   it("validates runtime status exactly", async () => {
     let snap = createSnapshot(businessA);
     (snap.products[0] as any).status = "DELETED";
     await expect(db.catalog.applyInitialBootstrap(snap)).rejects.toThrow("Invalid Product.status: DELETED");
+    await expectBusinessCatalogEmpty(db, businessA);
 
     snap = createSnapshot(businessA);
     (snap.product_units[0] as any).status = "DRAFT";
     await expect(db.catalog.applyInitialBootstrap(snap)).rejects.toThrow("Invalid ProductUnit.status: DRAFT");
+    await expectBusinessCatalogEmpty(db, businessA);
 
     snap = createSnapshot(businessA);
     (snap.barcodes[0] as any).status = "REVOKED";
     await expect(db.catalog.applyInitialBootstrap(snap)).rejects.toThrow("Invalid Barcode.status: REVOKED");
-
-    const products = await db.catalog.listProducts(businessA);
-    expect(products).toHaveLength(0); // Nothing written
+    await expectBusinessCatalogEmpty(db, businessA);
   });
 
   it("rejects non-string conversion_factor", async () => {
     const snap = createSnapshot(businessA);
     (snap.product_units[0] as any).conversion_factor = 1;
     await expect(db.catalog.applyInitialBootstrap(snap)).rejects.toThrow("ProductUnit.conversion_factor must be a string");
+    await expectBusinessCatalogEmpty(db, businessA);
   });
 
   it("preserves exact decimal string without normalizing", async () => {
@@ -315,37 +342,38 @@ describe("POS Catalog Cache Bootstrap", () => {
     await db.catalog.applyInitialBootstrap(snap);
 
     const originalProducts = await db.catalog.listProducts(businessA);
+    const originalUnits = await db.catalog.listProductUnits(businessA);
+    const originalBarcodes = await db.catalog.listBarcodes(businessA);
+    const originalState = await db.catalog.getBootstrapState(businessA);
     
     const snap2 = createSnapshot(businessA);
     (snap2.products[0]! as any).name = "Mutated name";
+    (snap2.product_units[0]! as any).conversion_factor = "9.9";
+    (snap2.barcodes[0]! as any).barcode = "999";
 
     await expect(db.catalog.applyInitialBootstrap(snap2)).rejects.toThrow("Catalog is already bootstrapped for business: bus-A");
 
-    const subsequentProducts = await db.catalog.listProducts(businessA);
-    expect(subsequentProducts[0]!.name).toBe("Product 1"); // Original preserved
-    expect(subsequentProducts).toEqual(originalProducts);
+    expect(await db.catalog.listProducts(businessA)).toEqual(originalProducts);
+    expect(await db.catalog.listProductUnits(businessA)).toEqual(originalUnits);
+    expect(await db.catalog.listBarcodes(businessA)).toEqual(originalBarcodes);
+    expect(await db.catalog.getBootstrapState(businessA)).toEqual(originalState);
   });
 
   it("rolls back genuine Dexie transaction on constraint failure", async () => {
     const snap = createSnapshot(businessA);
-    // Duplicate primary key explicitly inside the transaction to force Dexie bulkAdd failure
-    // It passes JS validation but fails during write
+    // Use distinct IDs to pass structure check, but identical SKU for same business to fail Dexie index
     const badSnap = {
       ...snap,
       products: [
-        ...snap.products,
-        { ...snap.products[0] as any }
+        { ...snap.products[0], id: "p1", sku: "SKU-DUP" } as any,
+        { ...snap.products[0], id: "p2", sku: "SKU-DUP" } as any,
       ]
     };
 
     // Because bulkAdd throws when keys collide
     await expect(db.catalog.applyInitialBootstrap(badSnap)).rejects.toThrow();
 
-    const products = await db.catalog.listProducts(businessA);
-    expect(products).toHaveLength(0); // Atomicity ensures nothing is written
-
-    const state = await db.catalog.getBootstrapState(businessA);
-    expect(state).toBeNull();
+    await expectBusinessCatalogEmpty(db, businessA);
   });
 
   it("preserves persistence across close and reopen", async () => {
@@ -366,6 +394,10 @@ describe("POS Catalog Cache Bootstrap", () => {
     const state = await db2.catalog.getBootstrapState(businessA);
     expect(state).not.toBeNull();
 
+    const products = await db2.catalog.listProducts(businessA);
+    expect(products[0]!.id).toBe("p1");
+    expect(products[0]!.sku).toBe("SKU-1");
+
     const barcodes = await db2.catalog.listBarcodes(businessA);
     expect(barcodes[0]!.barcode).toBe("000555"); // exact leading zero string
 
@@ -375,43 +407,39 @@ describe("POS Catalog Cache Bootstrap", () => {
     db2.close();
   });
 
-  it("defines exact index and keyPath semantics natively", () => {
-    // We can inspect the Dexie metadata
-    // @ts-ignore
-    const dexieDb = db._database;
+  it("defines exact index and keyPath semantics natively", async () => {
+    const req = runtime.indexedDB.open(db.name);
+    const idb = await new Promise<IDBDatabase>((resolve, reject) => {
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
 
-    const productsStore = dexieDb.table("products").schema;
-    expect(productsStore.primKey.keyPath).toBe("id");
-    expect(productsStore.primKey.unique).toBe(true);
-    expect(productsStore.indexes.map((i: any) => i.name)).toEqual(expect.arrayContaining([
-      "business_id",
-      "sku",
-      "name",
-      "status",
-      "[business_id+sku]",
-      "[business_id+status]"
+    const txn = idb.transaction(["products", "product_units", "barcodes", "catalog_bootstrap_state"], "readonly");
+    
+    const productsStore = txn.objectStore("products");
+    expect(productsStore.keyPath).toBe("id");
+    expect(Array.from(productsStore.indexNames)).toEqual(expect.arrayContaining([
+      "business_id", "sku", "name", "status", "[business_id+sku]", "[business_id+status]"
     ]));
-    expect(productsStore.indexes.find((i: any) => i.name === "[business_id+sku]")?.unique).toBe(true);
+    expect(productsStore.index("[business_id+sku]").unique).toBe(true);
 
-    const unitsStore = dexieDb.table("product_units").schema;
-    expect(unitsStore.primKey.keyPath).toBe("id");
-    expect(unitsStore.indexes.map((i: any) => i.name)).toEqual(expect.arrayContaining([
-      "[product_id+unit_code]",
-      "[business_id+product_id]",
-      "[business_id+status]"
+    const unitsStore = txn.objectStore("product_units");
+    expect(unitsStore.keyPath).toBe("id");
+    expect(Array.from(unitsStore.indexNames)).toEqual(expect.arrayContaining([
+      "[product_id+unit_code]", "[business_id+product_id]", "[business_id+status]"
     ]));
-    expect(unitsStore.indexes.find((i: any) => i.name === "[product_id+unit_code]")?.unique).toBe(true);
+    expect(unitsStore.index("[product_id+unit_code]").unique).toBe(true);
 
-    const barcodesStore = dexieDb.table("barcodes").schema;
-    expect(barcodesStore.primKey.keyPath).toBe("id");
-    expect(barcodesStore.indexes.map((i: any) => i.name)).toEqual(expect.arrayContaining([
-      "[business_id+barcode]",
-      "[business_id+product_unit_id]",
-      "[business_id+status]"
+    const barcodesStore = txn.objectStore("barcodes");
+    expect(barcodesStore.keyPath).toBe("id");
+    expect(Array.from(barcodesStore.indexNames)).toEqual(expect.arrayContaining([
+      "[business_id+barcode]", "[business_id+product_unit_id]", "[business_id+status]"
     ]));
-    expect(barcodesStore.indexes.find((i: any) => i.name === "[business_id+barcode]")?.unique).toBe(false);
+    expect(barcodesStore.index("[business_id+barcode]").unique).toBe(false);
 
-    const stateStore = dexieDb.table("catalog_bootstrap_state").schema;
-    expect(stateStore.primKey.keyPath).toBe("business_id");
+    const stateStore = txn.objectStore("catalog_bootstrap_state");
+    expect(stateStore.keyPath).toBe("business_id");
+
+    idb.close();
   });
 });
