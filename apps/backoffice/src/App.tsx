@@ -7,6 +7,10 @@ const UiShowcase = import.meta.env.DEV
   ? lazy(() => import("./UiShowcase"))
   : null;
 
+const CatalogFixtureShell = import.meta.env.DEV
+  ? lazy(() => import("./features/catalog/CatalogFixtureShell"))
+  : null;
+
 function PlaceholderShell() {
   return (
     <main className="ks-root app-shell" aria-labelledby="app-title">
@@ -44,6 +48,22 @@ export function App() {
               }
             >
               <UiShowcase />
+            </Suspense>
+          }
+        />
+      )}
+      {CatalogFixtureShell === null ? null : (
+        <Route
+          path="/products/*"
+          element={
+            <Suspense
+              fallback={
+                <main className="ks-root app-shell">
+                  <Spinner label="Memuat produk" />
+                </main>
+              }
+            >
+              <CatalogFixtureShell />
             </Suspense>
           }
         />
