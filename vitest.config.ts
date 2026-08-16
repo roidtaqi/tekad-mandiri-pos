@@ -47,12 +47,22 @@ export default defineConfig({
         root: repositoryRoot,
         test: {
           ...testDefaults,
+          exclude: ["packages/ui/**"],
           environment: "node",
           include: [
             "packages/*/src/**/*.test.{ts,tsx}",
             "packages/*/tests/**/*.test.{ts,tsx}",
           ],
           name: "packages",
+        },
+      },
+      {
+        root: fileURLToPath(new URL("./packages/ui/", import.meta.url)),
+        test: {
+          ...testDefaults,
+          environment: "happy-dom",
+          include: ["tests/**/*.test.{ts,tsx}"],
+          name: "ui",
         },
       },
       {

@@ -6,11 +6,13 @@
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit && vite build",
     "dev": "vite",
+    "dev:ui": "vite --open /__ui",
     "preview": "vite preview",
     "test": "vitest run --config ../../vitest.config.ts --project backoffice",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit"
   },
   "dependencies": {
+    "@kastur/ui": "*",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.2"

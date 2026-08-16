@@ -1,0 +1,431 @@
+@layer ks-primitive, ks-semantic, ks-component, ks-brand;
+
+@layer ks-primitive {
+  :root {
+    /* Neutral foundation */
+    --ks-color-neutral-0: #ffffff;
+    --ks-color-neutral-50: #f8fafc;
+    --ks-color-neutral-100: #f1f5f9;
+    --ks-color-neutral-200: #e2e8f0;
+    --ks-color-neutral-300: #cbd5e1;
+    --ks-color-neutral-400: #94a3b8;
+    --ks-color-neutral-500: #64748b;
+    --ks-color-neutral-600: #475569;
+    --ks-color-neutral-700: #334155;
+    --ks-color-neutral-800: #1e293b;
+    --ks-color-neutral-900: #0f172a;
+    --ks-color-neutral-950: #020617;
+
+    /* Brand-neutral accent foundation */
+    --ks-color-accent-50: #eef2ff;
+    --ks-color-accent-100: #e0e7ff;
+    --ks-color-accent-200: #c7d2fe;
+    --ks-color-accent-300: #a5b4fc;
+    --ks-color-accent-400: #818cf8;
+    --ks-color-accent-500: #6366f1;
+    --ks-color-accent-600: #4f46e5;
+    --ks-color-accent-700: #4338ca;
+    --ks-color-accent-800: #3730a3;
+    --ks-color-accent-900: #312e81;
+    --ks-color-accent-950: #1e1b4b;
+
+    /* Status primitives stay internal to the semantic layer. */
+    --ks-color-green-50: #ecfdf5;
+    --ks-color-green-200: #a7f3d0;
+    --ks-color-green-700: #047857;
+    --ks-color-green-800: #065f46;
+    --ks-color-green-950: #022c22;
+    --ks-color-amber-50: #fffbeb;
+    --ks-color-amber-200: #fde68a;
+    --ks-color-amber-800: #92400e;
+    --ks-color-amber-900: #78350f;
+    --ks-color-amber-950: #451a03;
+    --ks-color-red-50: #fef2f2;
+    --ks-color-red-200: #fecaca;
+    --ks-color-red-700: #b91c1c;
+    --ks-color-red-900: #7f1d1d;
+    --ks-color-red-950: #450a0a;
+    --ks-color-blue-50: #eff6ff;
+    --ks-color-blue-200: #bfdbfe;
+    --ks-color-blue-700: #1d4ed8;
+    --ks-color-blue-900: #1e3a8a;
+    --ks-color-blue-950: #172554;
+    --ks-color-violet-50: #faf5ff;
+    --ks-color-violet-200: #e9d5ff;
+    --ks-color-violet-700: #7e22ce;
+    --ks-color-violet-900: #581c87;
+    --ks-color-violet-950: #2e1065;
+
+    /* Typography */
+    --ks-font-family-sans: Inter, ui-sans-serif, system-ui, -apple-system,
+      BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --ks-font-family-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+      "Liberation Mono", monospace;
+    --ks-font-size-micro: 0.6875rem;
+    --ks-font-size-caption: 0.75rem;
+    --ks-font-size-body-sm: 0.8125rem;
+    --ks-font-size-body: 0.875rem;
+    --ks-font-size-body-lg: 1rem;
+    --ks-font-size-h3: 1.125rem;
+    --ks-font-size-h2: 1.375rem;
+    --ks-font-size-h1: 1.75rem;
+    --ks-font-size-display: 2rem;
+    --ks-line-height-micro: 1rem;
+    --ks-line-height-caption: 1.125rem;
+    --ks-line-height-body-sm: 1.25rem;
+    --ks-line-height-body: 1.375rem;
+    --ks-line-height-body-lg: 1.5rem;
+    --ks-line-height-h3: 1.625rem;
+    --ks-line-height-h2: 1.875rem;
+    --ks-line-height-h1: 2.25rem;
+    --ks-line-height-display: 2.5rem;
+    --ks-font-weight-regular: 400;
+    --ks-font-weight-medium: 500;
+    --ks-font-weight-semibold: 600;
+    --ks-font-weight-bold: 700;
+
+    /* Four-pixel spacing system */
+    --ks-space-0: 0;
+    --ks-space-1: 0.25rem;
+    --ks-space-2: 0.5rem;
+    --ks-space-3: 0.75rem;
+    --ks-space-4: 1rem;
+    --ks-space-5: 1.25rem;
+    --ks-space-6: 1.5rem;
+    --ks-space-8: 2rem;
+    --ks-space-10: 2.5rem;
+    --ks-space-12: 3rem;
+    --ks-space-16: 4rem;
+    --ks-space-20: 5rem;
+
+    /* Shape and borders */
+    --ks-radius-xs: 0.25rem;
+    --ks-radius-sm: 0.375rem;
+    --ks-radius-md: 0.5rem;
+    --ks-radius-lg: 0.75rem;
+    --ks-radius-xl: 1rem;
+    --ks-radius-full: 9999px;
+    --ks-border-width-0: 0;
+    --ks-border-width-1: 1px;
+    --ks-border-width-2: 2px;
+    --ks-border-style: solid;
+
+    /* Restrained operational elevation */
+    --ks-shadow-0: none;
+    --ks-shadow-1: 0 1px 2px rgb(15 23 42 / 0.08);
+    --ks-shadow-2: 0 8px 24px rgb(15 23 42 / 0.14);
+    --ks-shadow-3: 0 20px 48px rgb(15 23 42 / 0.2);
+
+    /* Stacking contexts */
+    --ks-z-base: 0;
+    --ks-z-sticky: 100;
+    --ks-z-dropdown: 200;
+    --ks-z-overlay: 300;
+    --ks-z-dialog: 400;
+    --ks-z-toast: 500;
+    --ks-z-tooltip: 600;
+
+    /* Functional motion */
+    --ks-motion-instant: 0ms;
+    --ks-motion-fast: 120ms;
+    --ks-motion-normal: 180ms;
+    --ks-motion-slow: 240ms;
+    --ks-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+    --ks-ease-emphasized: cubic-bezier(0.2, 0, 0, 1.2);
+
+    /* Reference values. CSS custom properties cannot be used in media queries. */
+    --ks-breakpoint-sm: 40rem;
+    --ks-breakpoint-md: 48rem;
+    --ks-breakpoint-lg: 64rem;
+    --ks-breakpoint-xl: 80rem;
+    --ks-breakpoint-2xl: 96rem;
+
+    /* Operational control dimensions */
+    --ks-size-control-sm: 2rem;
+    --ks-size-control-md: 2.5rem;
+    --ks-size-control-lg: 2.75rem;
+    --ks-size-control-pos: 3rem;
+    --ks-size-touch-target: 2.75rem;
+  }
+}
+
+@layer ks-semantic {
+  :root {
+    --ks-color-bg-canvas: var(--ks-color-neutral-100);
+    --ks-color-bg-page: var(--ks-color-neutral-50);
+    --ks-color-bg-surface: var(--ks-color-neutral-0);
+    --ks-color-bg-subtle: var(--ks-color-neutral-100);
+    --ks-color-bg-elevated: var(--ks-color-neutral-0);
+    --ks-color-bg-inverse: var(--ks-color-neutral-900);
+    --ks-color-bg-overlay: rgb(2 6 23 / 0.56);
+
+    --ks-color-text-primary: var(--ks-color-neutral-950);
+    --ks-color-text-secondary: var(--ks-color-neutral-700);
+    --ks-color-text-muted: var(--ks-color-neutral-600);
+    --ks-color-text-disabled: var(--ks-color-neutral-400);
+    --ks-color-text-inverse: var(--ks-color-neutral-0);
+    --ks-color-text-on-inverse: var(--ks-color-neutral-0);
+    --ks-color-text-link: var(--ks-color-accent-700);
+
+    --ks-color-border-default: var(--ks-color-neutral-200);
+    --ks-color-border-strong: var(--ks-color-neutral-300);
+    --ks-color-border-focus: var(--ks-color-accent-500);
+
+    --ks-color-accent-subtle: var(--ks-color-accent-50);
+    --ks-color-accent-muted: var(--ks-color-accent-100);
+    --ks-color-accent-default: var(--ks-color-accent-600);
+    --ks-color-accent-strong: var(--ks-color-accent-800);
+    --ks-color-accent-contrast: var(--ks-color-neutral-0);
+
+    --ks-color-action-primary: var(--ks-color-accent-600);
+    --ks-color-action-primary-hover: var(--ks-color-accent-700);
+    --ks-color-action-primary-active: var(--ks-color-accent-800);
+    --ks-color-action-primary-contrast: var(--ks-color-neutral-0);
+    --ks-color-action-secondary: var(--ks-color-neutral-0);
+    --ks-color-action-secondary-hover: var(--ks-color-neutral-100);
+    --ks-color-action-secondary-active: var(--ks-color-neutral-200);
+    --ks-color-action-disabled: var(--ks-color-neutral-200);
+    --ks-color-control-track: var(--ks-color-neutral-400);
+    --ks-color-control-thumb: var(--ks-color-neutral-0);
+
+    --ks-color-status-success-subtle: var(--ks-color-green-50);
+    --ks-color-status-success-border: var(--ks-color-green-200);
+    --ks-color-status-success-foreground: var(--ks-color-green-700);
+    --ks-color-status-success-strong: var(--ks-color-green-800);
+    --ks-color-status-warning-subtle: var(--ks-color-amber-50);
+    --ks-color-status-warning-border: var(--ks-color-amber-200);
+    --ks-color-status-warning-foreground: var(--ks-color-amber-800);
+    --ks-color-status-warning-strong: var(--ks-color-amber-900);
+    --ks-color-status-danger-subtle: var(--ks-color-red-50);
+    --ks-color-status-danger-border: var(--ks-color-red-200);
+    --ks-color-status-danger-foreground: var(--ks-color-red-700);
+    --ks-color-status-danger-strong: var(--ks-color-red-900);
+    --ks-color-status-info-subtle: var(--ks-color-blue-50);
+    --ks-color-status-info-border: var(--ks-color-blue-200);
+    --ks-color-status-info-foreground: var(--ks-color-blue-700);
+    --ks-color-status-info-strong: var(--ks-color-blue-900);
+    --ks-color-status-neutral-subtle: var(--ks-color-neutral-100);
+    --ks-color-status-neutral-border: var(--ks-color-neutral-300);
+    --ks-color-status-neutral-foreground: var(--ks-color-neutral-600);
+    --ks-color-status-neutral-strong: var(--ks-color-neutral-800);
+    --ks-color-status-review-subtle: var(--ks-color-violet-50);
+    --ks-color-status-review-border: var(--ks-color-violet-200);
+    --ks-color-status-review-foreground: var(--ks-color-violet-700);
+    --ks-color-status-review-strong: var(--ks-color-violet-900);
+
+    /* Locked exception-severity aliases. */
+    --ks-color-severity-info-subtle: var(--ks-color-status-info-subtle);
+    --ks-color-severity-info-border: var(--ks-color-status-info-border);
+    --ks-color-severity-info-foreground: var(--ks-color-status-info-foreground);
+    --ks-color-severity-info-strong: var(--ks-color-status-info-strong);
+    --ks-color-severity-warning-subtle: var(--ks-color-status-warning-subtle);
+    --ks-color-severity-warning-border: var(--ks-color-status-warning-border);
+    --ks-color-severity-warning-foreground: var(
+      --ks-color-status-warning-foreground
+    );
+    --ks-color-severity-warning-strong: var(--ks-color-status-warning-strong);
+    --ks-color-severity-review-required-subtle: var(
+      --ks-color-status-review-subtle
+    );
+    --ks-color-severity-review-required-border: var(
+      --ks-color-status-review-border
+    );
+    --ks-color-severity-review-required-foreground: var(
+      --ks-color-status-review-foreground
+    );
+    --ks-color-severity-review-required-strong: var(
+      --ks-color-status-review-strong
+    );
+    --ks-color-severity-critical-subtle: var(--ks-color-status-danger-subtle);
+    --ks-color-severity-critical-border: var(--ks-color-status-danger-border);
+    --ks-color-severity-critical-foreground: var(
+      --ks-color-status-danger-foreground
+    );
+    --ks-color-severity-critical-strong: var(--ks-color-status-danger-strong);
+
+    --ks-color-selection-bg: var(--ks-color-blue-50);
+    --ks-color-selection-border: var(--ks-color-blue-200);
+    --ks-focus-ring-color: var(--ks-color-border-focus);
+    --ks-focus-ring-width: 3px;
+    --ks-focus-ring-offset: 2px;
+
+    --ks-brand-fallback-subtle: var(--ks-color-accent-50);
+    --ks-brand-fallback-muted: var(--ks-color-accent-100);
+    --ks-brand-fallback-default: var(--ks-color-accent-600);
+    --ks-brand-fallback-hover: var(--ks-color-accent-700);
+    --ks-brand-fallback-strong: var(--ks-color-accent-800);
+    --ks-brand-fallback-contrast: var(--ks-color-neutral-0);
+  }
+
+  [data-kastur-theme="dark"] {
+    --ks-color-bg-canvas: var(--ks-color-neutral-950);
+    --ks-color-bg-page: var(--ks-color-neutral-950);
+    --ks-color-bg-surface: var(--ks-color-neutral-900);
+    --ks-color-bg-subtle: var(--ks-color-neutral-800);
+    --ks-color-bg-elevated: var(--ks-color-neutral-800);
+    --ks-color-bg-inverse: var(--ks-color-neutral-100);
+    --ks-color-bg-overlay: rgb(2 6 23 / 0.76);
+
+    --ks-color-text-primary: var(--ks-color-neutral-50);
+    --ks-color-text-secondary: var(--ks-color-neutral-300);
+    --ks-color-text-muted: var(--ks-color-neutral-400);
+    --ks-color-text-disabled: var(--ks-color-neutral-500);
+    --ks-color-text-inverse: var(--ks-color-neutral-900);
+    --ks-color-text-on-inverse: var(--ks-color-neutral-950);
+    --ks-color-text-link: var(--ks-color-accent-300);
+
+    --ks-color-border-default: var(--ks-color-neutral-700);
+    --ks-color-border-strong: var(--ks-color-neutral-600);
+    --ks-color-border-focus: var(--ks-color-accent-300);
+
+    --ks-color-accent-subtle: var(--ks-color-accent-950);
+    --ks-color-accent-muted: var(--ks-color-accent-900);
+    --ks-color-accent-default: var(--ks-color-accent-300);
+    --ks-color-accent-strong: var(--ks-color-accent-100);
+    --ks-color-accent-contrast: var(--ks-color-neutral-950);
+
+    --ks-color-action-primary: var(--ks-color-accent-300);
+    --ks-color-action-primary-hover: var(--ks-color-accent-200);
+    --ks-color-action-primary-active: var(--ks-color-accent-100);
+    --ks-color-action-primary-contrast: var(--ks-color-neutral-950);
+    --ks-color-action-secondary: var(--ks-color-neutral-900);
+    --ks-color-action-secondary-hover: var(--ks-color-neutral-800);
+    --ks-color-action-secondary-active: var(--ks-color-neutral-700);
+    --ks-color-action-disabled: var(--ks-color-neutral-700);
+    --ks-color-control-track: var(--ks-color-neutral-600);
+    --ks-color-control-thumb: var(--ks-color-neutral-50);
+
+    --ks-color-status-success-subtle: var(--ks-color-green-950);
+    --ks-color-status-success-border: var(--ks-color-green-800);
+    --ks-color-status-success-foreground: var(--ks-color-green-200);
+    --ks-color-status-success-strong: var(--ks-color-green-50);
+    --ks-color-status-warning-subtle: var(--ks-color-amber-950);
+    --ks-color-status-warning-border: var(--ks-color-amber-800);
+    --ks-color-status-warning-foreground: var(--ks-color-amber-200);
+    --ks-color-status-warning-strong: var(--ks-color-amber-50);
+    --ks-color-status-danger-subtle: var(--ks-color-red-950);
+    --ks-color-status-danger-border: var(--ks-color-red-700);
+    --ks-color-status-danger-foreground: var(--ks-color-red-200);
+    --ks-color-status-danger-strong: var(--ks-color-red-50);
+    --ks-color-status-info-subtle: var(--ks-color-blue-950);
+    --ks-color-status-info-border: var(--ks-color-blue-700);
+    --ks-color-status-info-foreground: var(--ks-color-blue-200);
+    --ks-color-status-info-strong: var(--ks-color-blue-50);
+    --ks-color-status-neutral-subtle: var(--ks-color-neutral-800);
+    --ks-color-status-neutral-border: var(--ks-color-neutral-600);
+    --ks-color-status-neutral-foreground: var(--ks-color-neutral-300);
+    --ks-color-status-neutral-strong: var(--ks-color-neutral-50);
+    --ks-color-status-review-subtle: var(--ks-color-violet-950);
+    --ks-color-status-review-border: var(--ks-color-violet-700);
+    --ks-color-status-review-foreground: var(--ks-color-violet-200);
+    --ks-color-status-review-strong: var(--ks-color-violet-50);
+
+    --ks-color-selection-bg: var(--ks-color-blue-950);
+    --ks-color-selection-border: var(--ks-color-blue-700);
+    --ks-focus-ring-color: var(--ks-color-border-focus);
+    --ks-color-severity-info-subtle: var(--ks-color-status-info-subtle);
+    --ks-color-severity-info-border: var(--ks-color-status-info-border);
+    --ks-color-severity-info-foreground: var(--ks-color-status-info-foreground);
+    --ks-color-severity-info-strong: var(--ks-color-status-info-strong);
+    --ks-color-severity-warning-subtle: var(--ks-color-status-warning-subtle);
+    --ks-color-severity-warning-border: var(--ks-color-status-warning-border);
+    --ks-color-severity-warning-foreground: var(
+      --ks-color-status-warning-foreground
+    );
+    --ks-color-severity-warning-strong: var(--ks-color-status-warning-strong);
+    --ks-color-severity-review-required-subtle: var(
+      --ks-color-status-review-subtle
+    );
+    --ks-color-severity-review-required-border: var(
+      --ks-color-status-review-border
+    );
+    --ks-color-severity-review-required-foreground: var(
+      --ks-color-status-review-foreground
+    );
+    --ks-color-severity-review-required-strong: var(
+      --ks-color-status-review-strong
+    );
+    --ks-color-severity-critical-subtle: var(--ks-color-status-danger-subtle);
+    --ks-color-severity-critical-border: var(--ks-color-status-danger-border);
+    --ks-color-severity-critical-foreground: var(
+      --ks-color-status-danger-foreground
+    );
+    --ks-color-severity-critical-strong: var(--ks-color-status-danger-strong);
+    --ks-brand-fallback-subtle: var(--ks-color-accent-950);
+    --ks-brand-fallback-muted: var(--ks-color-accent-900);
+    --ks-brand-fallback-default: var(--ks-color-accent-300);
+    --ks-brand-fallback-hover: var(--ks-color-accent-200);
+    --ks-brand-fallback-strong: var(--ks-color-accent-100);
+    --ks-brand-fallback-contrast: var(--ks-color-neutral-950);
+  }
+}
+
+@layer ks-component {
+  :root {
+    --ks-component-control-height: var(--ks-size-control-md);
+    --ks-component-control-radius: var(--ks-radius-md);
+    --ks-component-control-border: var(--ks-color-border-strong);
+    --ks-component-control-bg: var(--ks-color-bg-surface);
+    --ks-component-control-padding-inline: var(--ks-space-3);
+    --ks-component-button-gap: var(--ks-space-2);
+    --ks-component-card-radius: var(--ks-radius-lg);
+    --ks-component-dialog-radius: var(--ks-radius-xl);
+    --ks-component-table-row-height: 3rem;
+    --ks-component-table-row-height-compact: 2.5rem;
+  }
+
+  [data-kastur-theme="dark"] {
+    --ks-component-control-border: var(--ks-color-border-strong);
+    --ks-component-control-bg: var(--ks-color-bg-surface);
+  }
+}
+
+@layer ks-brand {
+  /*
+   * A product brand opts in with data-kastur-brand and may provide any
+   * --ks-brand-* value. The semantic contract remains stable.
+   */
+  [data-kastur-brand] {
+    --ks-color-accent-subtle: var(
+      --ks-brand-accent-subtle,
+      var(--ks-brand-fallback-subtle)
+    );
+    --ks-color-accent-muted: var(
+      --ks-brand-accent-muted,
+      var(--ks-brand-fallback-muted)
+    );
+    --ks-color-accent-default: var(
+      --ks-brand-accent,
+      var(--ks-brand-fallback-default)
+    );
+    --ks-color-accent-strong: var(
+      --ks-brand-accent-strong,
+      var(--ks-brand-fallback-strong)
+    );
+    --ks-color-accent-contrast: var(
+      --ks-brand-accent-contrast,
+      var(--ks-brand-fallback-contrast)
+    );
+    --ks-color-action-primary: var(
+      --ks-brand-accent,
+      var(--ks-brand-fallback-default)
+    );
+    --ks-color-action-primary-hover: var(
+      --ks-brand-accent-hover,
+      var(--ks-brand-fallback-hover)
+    );
+    --ks-color-action-primary-active: var(
+      --ks-brand-accent-strong,
+      var(--ks-brand-fallback-strong)
+    );
+    --ks-color-action-primary-contrast: var(
+      --ks-brand-accent-contrast,
+      var(--ks-brand-fallback-contrast)
+    );
+    --ks-color-border-focus: var(
+      --ks-brand-focus-ring,
+      var(--ks-brand-fallback-default)
+    );
+    --ks-focus-ring-color: var(--ks-color-border-focus);
+  }
+}

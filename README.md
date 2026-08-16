@@ -2,7 +2,7 @@
 
 Kastur Retail System v2 is a new, offline-first retail-system rebuild. This repository is the v2 monorepo; the legacy `inventory-pricing-app` and `integrated-pos-app` repositories are reference and migration sources only.
 
-M0-003 establishes the Worker API runtime boundary and a forward-only PostgreSQL migration harness. It contains no catalog, pricing, stock, sales, cash, identity, return, or synchronization behavior and adds no domain schema or seeds.
+M0-004 adds the shared design-token and UI-primitive foundation used by both frontend placeholders. It contains no business screens or workflows. The existing M0-003 Worker boundary and forward-only PostgreSQL migration harness remain unchanged.
 
 ## Repository layout
 
@@ -50,9 +50,21 @@ The API uses a Worker-class runtime with generated, compatibility-date-specific 
 
 Back Office and POS share only the minimal React Vite baseline under `tooling/vite`. They remain independent applications and outputs; POS owns all PWA-specific configuration. The API's existing Vite build remains a framework-independent bundle smoke, while `wrangler.jsonc` and the local Wrangler smoke are authoritative for the Worker runtime entry point. A future deployment workflow must align its release artifact with Wrangler; M0-003 deliberately adds no deployment command or production resource access.
 
-Vitest uses named, runtime-explicit projects in `vitest.config.ts`. Current frontend tests use server rendering in Node, API tests use Node's Web Fetch implementation as a unit-test harness, and repository-boundary tests validate the production TypeScript runtime assumptions separately. Package tests are discovered across `packages/*` in a fast Node unit-test project; a future package test that needs browser APIs must receive an explicit browser-aware project instead of relying on accidental globals.
+Vitest uses named, runtime-explicit projects in `vitest.config.ts`. Current frontend tests use server rendering in Node, API tests use Node's Web Fetch implementation as a unit-test harness, and repository-boundary tests validate the production TypeScript runtime assumptions separately. Package tests are discovered across `packages/*` in a fast Node unit-test project. `@kastur/ui` behavior runs in its own lightweight browser-like project so DOM assumptions never leak into unrelated packages.
 
 `@kastur/config` is reserved for concrete validated non-secret runtime configuration primitives. `@kastur/testing` is reserved for concrete reusable test helpers. Their local READMEs define the intentionally narrow boundaries; neither package exports speculative APIs in M0-002.
+
+## Shared UI foundation
+
+Both frontend apps consume design tokens and intentionally exported primitives through the root `@kastur/ui` entry point. The package uses layered, namespaced CSS custom properties so feature code depends on semantic roles rather than raw palette values. Light is the default; a scoped dark token set and a brand-override seam are present without adding theme settings or product branding.
+
+See [the UI package guide](./packages/ui/README.md) for the component inventory, accessibility rules, theme contract, and contribution boundary. To inspect the development-only neutral showcase:
+
+```bash
+npm run dev:ui
+```
+
+Open `/__ui` if the development server does not open it automatically. The route is deliberately excluded from production Back Office output and is not a business screen.
 
 ## Prerequisites
 
@@ -82,7 +94,10 @@ For local frontend development:
 ```bash
 npm run dev:backoffice
 npm run dev:pos
+npm run dev:ui
 ```
+
+Run the browser-like UI behavior suite independently with `npm run test:ui`.
 
 For local API runtime and type verification:
 

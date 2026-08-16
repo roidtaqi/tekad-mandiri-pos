@@ -1,5 +1,5 @@
 import { access, readdir, readFile } from "node:fs/promises";
-import { createRequire } from "node:module";
+import { builtinModules, createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -76,6 +76,12 @@ const workspaces: WorkspaceDefinition[] = [
 
 const workspaceByName = new Map(
   workspaces.map((workspace) => [workspace.name, workspace]),
+);
+
+const nodeBuiltins = new Set(
+  builtinModules.map((moduleName) =>
+    moduleName.startsWith("node:") ? moduleName.slice(5) : moduleName,
+  ),
 );
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -338,6 +344,28 @@ describe("TypeScript runtime boundaries", () => {
       expect(diagnostics.join("\n")).toContain("process");
       expect(diagnostics.join("\n")).toContain("Buffer");
     }
+  });
+
+  it("keeps UI DOM tests in their dedicated browser-aware program", () => {
+    const rootNodeTests = loadTsConfig("tsconfig.test.json").fileNames.map(
+      (fileName) => path.relative(repositoryRoot, fileName),
+    );
+    const uiTests = loadTsConfig("packages/ui/tsconfig.test.json").fileNames.map(
+      (fileName) => path.relative(repositoryRoot, fileName),
+    );
+    const diagnostics = compileProbe(
+      "packages/ui/tsconfig.json",
+      'document.createElement("button"); void process.cwd();',
+    );
+
+    expect(
+      rootNodeTests.some((fileName) => fileName.startsWith("packages/ui/")),
+    ).toBe(false);
+    expect(
+      uiTests.some((fileName) => fileName.endsWith("ui-primitives.test.tsx")),
+    ).toBe(true);
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics.join("\n")).toContain("process");
   });
 
   it("allows configured Worker APIs without exposing browser-only DOM globals", () => {
@@ -674,6 +702,187 @@ describe("workspace package boundaries", () => {
     }
 
     expect(violations).toEqual([]);
+  });
+
+  it("keeps the shared UI package presentation-only and browser-safe", async () => {
+    const uiWorkspace = workspaces.find(({ name }) => name === "@kastur/ui");
+
+    expect(uiWorkspace).toBeDefined();
+
+    if (uiWorkspace === undefined) {
+      return;
+    }
+
+    const manifest = await readJson<PackageManifest>(
+      path.join(uiWorkspace.directory, "package.json"),
+    );
+    const dependencies = {
+      ...manifest.dependencies,
+      ...manifest.devDependencies,
+      ...manifest.optionalDependencies,
+      ...manifest.peerDependencies,
+    };
+    const forbiddenWorkspaceDependencies = workspaces
+      .filter(({ name }) => name !== uiWorkspace.name)
+      .map(({ name }) => name);
+    const violations: string[] = [];
+
+    for (const dependency of forbiddenWorkspaceDependencies) {
+      if (dependencies[dependency] !== undefined) {
+        violations.push(`${uiWorkspace.directory} depends on ${dependency}`);
+      }
+    }
+
+    for (const fileName of await listCodeFiles(uiWorkspace.directory)) {
+      const sourceText = await readFile(fileName, "utf8");
+
+      for (const specifier of getModuleSpecifiers(fileName, sourceText)) {
+        const normalizedSpecifier = specifier.startsWith("node:")
+          ? specifier.slice(5)
+          : specifier;
+
+        if (nodeBuiltins.has(normalizedSpecifier)) {
+          violations.push(
+            `${path.relative(repositoryRoot, fileName)} imports Node builtin ${specifier}`,
+          );
+        }
+
+        if (
+          forbiddenWorkspaceDependencies.some(
+            (dependency) =>
+              specifier === dependency || specifier.startsWith(`${dependency}/`),
+          )
+        ) {
+          violations.push(
+            `${path.relative(repositoryRoot, fileName)} imports ${specifier}`,
+          );
+        }
+
+        if (!specifier.startsWith(".")) {
+          continue;
+        }
+
+        const resolvedImport = path.resolve(path.dirname(fileName), specifier);
+        const repositoryRelativeImport = path.relative(
+          repositoryRoot,
+          resolvedImport,
+        );
+
+        if (
+          ["apps", "database", "tooling"].some(
+            (directory) =>
+              repositoryRelativeImport === directory ||
+              repositoryRelativeImport.startsWith(`${directory}${path.sep}`),
+          )
+        ) {
+          violations.push(
+            `${path.relative(repositoryRoot, fileName)} reaches ${repositoryRelativeImport}`,
+          );
+        }
+      }
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("integrates both frontend applications through the public UI entry point", async () => {
+    for (const application of ["apps/backoffice", "apps/pos"]) {
+      const manifest = await readJson<PackageManifest>(
+        path.join(application, "package.json"),
+      );
+      const declaredDependencies = {
+        ...manifest.dependencies,
+        ...manifest.devDependencies,
+        ...manifest.optionalDependencies,
+        ...manifest.peerDependencies,
+      };
+      const uiImports: string[] = [];
+
+      expect(declaredDependencies).toHaveProperty("@kastur/ui");
+
+      for (const fileName of await listCodeFiles(path.join(application, "src"))) {
+        if (fileName.includes(".test.")) {
+          continue;
+        }
+
+        const sourceText = await readFile(fileName, "utf8");
+
+        for (const specifier of getModuleSpecifiers(fileName, sourceText)) {
+          if (specifier.startsWith("@kastur/ui")) {
+            uiImports.push(specifier);
+          }
+        }
+      }
+
+      expect(uiImports).toContain("@kastur/ui");
+      expect(uiImports.every((specifier) => specifier === "@kastur/ui")).toBe(
+        true,
+      );
+    }
+  });
+});
+
+describe("shared UI design-token contract", () => {
+  it("keeps token layers, themes, focus, numerics, and motion semantic", async () => {
+    const cssFiles = (await listClientBuildInputs("packages/ui")).filter(
+      (fileName) => fileName.endsWith(".css"),
+    );
+    const css = (
+      await Promise.all(
+        cssFiles.sort().map(async (fileName) => await readFile(fileName, "utf8")),
+      )
+    ).join("\n");
+
+    expect(cssFiles.length).toBeGreaterThan(0);
+    expect(css).toContain(
+      "@layer ks-primitive, ks-semantic, ks-component, ks-brand;",
+    );
+
+    for (const layer of [
+      "ks-primitive",
+      "ks-semantic",
+      "ks-component",
+      "ks-brand",
+    ]) {
+      expect(css).toContain(`@layer ${layer}`);
+    }
+
+    for (const token of [
+      "--ks-color-neutral-0",
+      "--ks-color-accent-500",
+      "--ks-font-family-sans",
+      "--ks-font-size-body",
+      "--ks-space-1",
+      "--ks-radius-md",
+      "--ks-border-width-1",
+      "--ks-shadow-1",
+      "--ks-color-bg-canvas",
+      "--ks-color-text-primary",
+      "--ks-color-border-default",
+      "--ks-color-action-primary",
+      "--ks-color-status-success-foreground",
+      "--ks-color-status-warning-foreground",
+      "--ks-color-status-review-foreground",
+      "--ks-color-status-danger-foreground",
+      "--ks-color-status-info-foreground",
+      "--ks-focus-ring-color",
+      "--ks-component-control-height",
+    ]) {
+      expect(css).toContain(`${token}:`);
+    }
+
+    expect(css).toContain('[data-kastur-theme="dark"]');
+    expect(css).toContain("[data-kastur-brand]");
+    expect(css).toMatch(/:focus-visible/u);
+    expect(css).toMatch(/font-variant-numeric:\s*tabular-nums/u);
+    expect(css).toMatch(
+      /\.ks-button__spinner[^{}]*\{[^}]*position:\s*absolute/su,
+    );
+    expect(css).toMatch(
+      /\.ks-button\[data-loading="true"\]\s+\.ks-button__content[^}]*visibility:\s*hidden/su,
+    );
+    expect(css).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)/u);
+    expect(css).not.toMatch(/@media\s*\(prefers-color-scheme:\s*dark\)/u);
   });
 });
 

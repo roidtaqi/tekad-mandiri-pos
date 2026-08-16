@@ -1,11 +1,25 @@
 import { Route, Routes } from "react-router-dom";
 
+import { Heading, Stack, Surface, Text } from "@kastur/ui";
+
 function PlaceholderShell() {
   return (
-    <main className="app-shell" aria-labelledby="app-title">
-      <p className="eyebrow">Kastur Retail System</p>
-      <h1 id="app-title">Kastur POS</h1>
-      <p className="status">Fondasi aplikasi siap.</p>
+    <main className="ks-root app-shell" aria-labelledby="app-title">
+      <Surface
+        className="app-shell__surface"
+        elevation={1}
+        padding="spacious"
+      >
+        <Stack align="center" gap={3}>
+          <Text as="span" size="caption" tone="muted" weight="bold">
+            Kastur Retail System
+          </Text>
+          <Heading id="app-title" level={1} size="display">
+            Kastur POS
+          </Heading>
+          <Text tone="secondary">Fondasi aplikasi siap.</Text>
+        </Stack>
+      </Surface>
     </main>
   );
 }

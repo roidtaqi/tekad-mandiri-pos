@@ -1,4 +1,4 @@
-import { access, readdir } from "node:fs/promises";
+import { access, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -9,6 +9,28 @@ const repositoryRoot = path.resolve(
 
 async function requireFile(relativePath) {
   await access(path.join(repositoryRoot, relativePath));
+}
+
+async function readTextFiles(relativeDirectory) {
+  const entries = await readdir(path.join(repositoryRoot, relativeDirectory), {
+    withFileTypes: true,
+  });
+  const contents = [];
+
+  for (const entry of entries) {
+    const relativePath = path.join(relativeDirectory, entry.name);
+
+    if (entry.isDirectory()) {
+      contents.push(...(await readTextFiles(relativePath)));
+      continue;
+    }
+
+    if (/\.(?:css|html|js)$/.test(entry.name)) {
+      contents.push(await readFile(path.join(repositoryRoot, relativePath), "utf8"));
+    }
+  }
+
+  return contents;
 }
 
 await Promise.all([
@@ -31,6 +53,30 @@ for (const posOnlyArtifact of ["manifest.webmanifest", "sw.js"]) {
   }
 }
 
+const [backofficeText, posText] = await Promise.all([
+  readTextFiles("apps/backoffice/dist"),
+  readTextFiles("apps/pos/dist"),
+]);
+
+for (const [appName, output] of [
+  ["Back Office", backofficeText],
+  ["POS", posText],
+]) {
+  if (!output.some((contents) => contents.includes("--ks-color-bg-canvas"))) {
+    throw new Error(`${appName} output does not contain the shared UI token baseline.`);
+  }
+}
+
+if (
+  backofficeText.some(
+    (contents) =>
+      contents.includes("KASTUR_UI_SHOWCASE_DEV_ONLY") ||
+      contents.includes("ui-showcase"),
+  )
+) {
+  throw new Error("The development-only UI showcase leaked into production output.");
+}
+
 console.log(
-  "Verified independent Back Office, POS/PWA, and API build outputs.",
+  "Verified independent app outputs, shared UI tokens, and showcase exclusion.",
 );

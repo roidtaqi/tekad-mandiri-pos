@@ -1,0 +1,220 @@
+@layer ks-primitive, ks-semantic, ks-component, ks-brand;
+
+@layer ks-component {
+  html,
+  body,
+  #root {
+    min-width: 0;
+    min-height: 100%;
+  }
+
+  body {
+    margin: 0;
+    color: var(--ks-color-text-primary);
+    background: var(--ks-color-bg-canvas);
+    font-family: var(--ks-font-family-sans);
+    font-size: var(--ks-font-size-body);
+    line-height: var(--ks-line-height-body);
+  }
+
+  #root {
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+
+  .ks-root {
+    color: var(--ks-color-text-primary);
+    background: var(--ks-color-bg-canvas);
+    color-scheme: light;
+    font-family: var(--ks-font-family-sans);
+    font-size: var(--ks-font-size-body);
+    font-weight: var(--ks-font-weight-regular);
+    line-height: var(--ks-line-height-body);
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .ks-root[data-kastur-theme="dark"],
+  [data-kastur-theme="dark"] .ks-root,
+  [data-kastur-theme="dark"] {
+    color-scheme: dark;
+  }
+
+  .ks-root,
+  .ks-root *,
+  .ks-root *::before,
+  .ks-root *::after {
+    box-sizing: border-box;
+  }
+
+  .ks-root :where(button, input, select, textarea) {
+    color: inherit;
+    font: inherit;
+  }
+
+  .ks-root :where(button, [role="button"], input, select, textarea, a) {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .ks-root :where(a) {
+    color: var(--ks-color-text-link);
+    text-underline-offset: 0.16em;
+  }
+
+  .ks-root :where(a:hover) {
+    text-decoration-thickness: 2px;
+  }
+
+  .ks-root ::selection {
+    color: var(--ks-color-text-primary);
+    background: var(--ks-color-accent-muted);
+  }
+
+  .ks-text,
+  .ks-heading {
+    margin: 0;
+  }
+
+  .ks-text {
+    color: var(--ks-color-text-primary);
+    font-size: var(--ks-font-size-body);
+    line-height: var(--ks-line-height-body);
+  }
+
+  .ks-text--secondary {
+    color: var(--ks-color-text-secondary);
+  }
+
+  .ks-text--muted {
+    color: var(--ks-color-text-muted);
+  }
+
+  .ks-text--primary {
+    color: var(--ks-color-text-primary);
+  }
+
+  .ks-text--inverse {
+    color: var(--ks-color-text-inverse);
+  }
+
+  .ks-text--large {
+    font-size: var(--ks-font-size-body-lg);
+    line-height: var(--ks-line-height-body-lg);
+  }
+
+  .ks-text--small {
+    font-size: var(--ks-font-size-body-sm);
+    line-height: var(--ks-line-height-body-sm);
+  }
+
+  .ks-text--caption {
+    font-size: var(--ks-font-size-caption);
+    line-height: var(--ks-line-height-caption);
+  }
+
+  .ks-text--micro {
+    font-size: var(--ks-font-size-micro);
+    line-height: var(--ks-line-height-micro);
+  }
+
+  .ks-text--body {
+    font-size: var(--ks-font-size-body);
+    line-height: var(--ks-line-height-body);
+  }
+
+  .ks-text--regular {
+    font-weight: var(--ks-font-weight-regular);
+  }
+
+  .ks-text--medium {
+    font-weight: var(--ks-font-weight-medium);
+  }
+
+  .ks-text--semibold {
+    font-weight: var(--ks-font-weight-semibold);
+  }
+
+  .ks-text--bold {
+    font-weight: var(--ks-font-weight-bold);
+  }
+
+  .ks-heading {
+    color: var(--ks-color-text-primary);
+    font-weight: var(--ks-font-weight-semibold);
+    letter-spacing: -0.015em;
+  }
+
+  .ks-heading--display {
+    font-size: var(--ks-font-size-display);
+    line-height: var(--ks-line-height-display);
+  }
+
+  .ks-heading--h1 {
+    font-size: var(--ks-font-size-h1);
+    line-height: var(--ks-line-height-h1);
+  }
+
+  .ks-heading--h2 {
+    font-size: var(--ks-font-size-h2);
+    line-height: var(--ks-line-height-h2);
+  }
+
+  .ks-heading--h3 {
+    font-size: var(--ks-font-size-h3);
+    line-height: var(--ks-line-height-h3);
+  }
+
+  .ks-numeric {
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+
+  .ks-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .ks-sr-only--focusable:focus {
+    position: fixed;
+    inset-block-start: var(--ks-space-2);
+    inset-inline-start: var(--ks-space-2);
+    z-index: var(--ks-z-tooltip);
+    width: auto;
+    height: auto;
+    padding: var(--ks-space-2) var(--ks-space-3);
+    margin: 0;
+    overflow: visible;
+    clip: auto;
+    white-space: normal;
+    color: var(--ks-color-text-primary);
+    background: var(--ks-color-bg-elevated);
+    border-radius: var(--ks-radius-md);
+    box-shadow: var(--ks-shadow-2);
+  }
+
+  .ks-focus-ring:focus-visible,
+  .ks-root :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: var(--ks-focus-ring-width) solid var(--ks-focus-ring-color);
+    outline-offset: var(--ks-focus-ring-offset);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  @layer ks-component {
+    .ks-root,
+    .ks-root *,
+    .ks-root *::before,
+    .ks-root *::after {
+      scroll-behavior: auto !important;
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

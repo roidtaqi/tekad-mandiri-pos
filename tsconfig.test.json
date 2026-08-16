@@ -7,5 +7,6 @@
     "packages/*/tests/**/*.test.ts",
     "packages/*/tests/**/*.test.tsx",
     "tooling/tests/**/*.ts"
-  ]
+  ],
+  "exclude": ["packages/ui/**"]
 }

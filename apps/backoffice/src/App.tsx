@@ -1,11 +1,30 @@
+import { lazy, Suspense } from "react";
 import { Route, Routes } from "react-router-dom";
+
+import { Heading, Spinner, Stack, Surface, Text } from "@kastur/ui";
+
+const UiShowcase = import.meta.env.DEV
+  ? lazy(() => import("./UiShowcase"))
+  : null;
 
 function PlaceholderShell() {
   return (
-    <main className="app-shell" aria-labelledby="app-title">
-      <p className="eyebrow">Kastur Retail System</p>
-      <h1 id="app-title">Kastur Back Office</h1>
-      <p className="status">Fondasi aplikasi siap.</p>
+    <main className="ks-root app-shell" aria-labelledby="app-title">
+      <Surface
+        className="app-shell__surface"
+        elevation={1}
+        padding="spacious"
+      >
+        <Stack align="center" gap={3}>
+          <Text as="span" size="caption" tone="muted" weight="bold">
+            Kastur Retail System
+          </Text>
+          <Heading id="app-title" level={1} size="display">
+            Kastur Back Office
+          </Heading>
+          <Text tone="secondary">Fondasi aplikasi siap.</Text>
+        </Stack>
+      </Surface>
     </main>
   );
 }
@@ -13,6 +32,22 @@ function PlaceholderShell() {
 export function App() {
   return (
     <Routes>
+      {UiShowcase === null ? null : (
+        <Route
+          path="/__ui"
+          element={
+            <Suspense
+              fallback={
+                <main className="ks-root app-shell">
+                  <Spinner label="Memuat etalase fondasi UI" />
+                </main>
+              }
+            >
+              <UiShowcase />
+            </Suspense>
+          }
+        />
+      )}
       <Route path="*" element={<PlaceholderShell />} />
     </Routes>
   );

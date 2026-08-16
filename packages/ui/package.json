@@ -4,7 +4,10 @@
   "private": true,
   "type": "module",
   "description": "Shared visual primitives and design-system boundary.",
-  "sideEffects": false,
+  "sideEffects": [
+    "./src/index.ts",
+    "./src/*.css"
+  ],
   "exports": {
     ".": {
       "types": "./src/index.ts",
@@ -13,6 +16,16 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "test": "vitest run --config ../../vitest.config.ts --project ui",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit"
+  },
+  "dependencies": {
+    "@radix-ui/react-dialog": "1.1.23",
+    "@radix-ui/react-tooltip": "1.2.16",
+    "lucide-react": "1.31.0"
+  },
+  "peerDependencies": {
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
   }
 }
