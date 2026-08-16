@@ -1,4 +1,5 @@
-import { renderToStaticMarkup } from "react-dom/server";
+// @vitest-environment happy-dom
+import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 
@@ -6,12 +7,23 @@ import { App } from "./App";
 
 describe("Back Office shell", () => {
   it("renders the application identity", () => {
-    const markup = renderToStaticMarkup(
+    render(
       <MemoryRouter>
         <App />
-      </MemoryRouter>,
+      </MemoryRouter>
+    );
+    expect(screen.getByText("Kastur Back Office")).toBeDefined();
+  });
+
+  it("production /products boundary does not spin indefinitely without runtime", async () => {
+    render(
+      <MemoryRouter initialEntries={["/products"]}>
+        <App />
+      </MemoryRouter>
     );
 
-    expect(markup).toContain("Kastur Back Office");
+    await waitFor(() => {
+      expect(screen.getByText("Katalog belum terhubung ke runtime aplikasi.")).toBeDefined();
+    });
   });
 });

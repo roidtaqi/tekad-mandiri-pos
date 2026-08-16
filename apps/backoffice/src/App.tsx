@@ -12,6 +12,7 @@ const CatalogFixtureShell = import.meta.env.DEV
   : null;
 
 const CatalogRoutes = lazy(() => import("./features/catalog/CatalogRoutes"));
+import { CatalogWorkspace } from "./features/catalog/CatalogWorkspace";
 
 function PlaceholderShell() {
   return (
@@ -82,7 +83,9 @@ export function App() {
           >
             <main className="ks-root app-shell" aria-labelledby="app-title">
               <Surface className="app-shell__surface" elevation={1} padding="spacious">
-                <CatalogRoutes />
+                <CatalogWorkspace authContext={null} catalogGateway={null}>
+                  <CatalogRoutes />
+                </CatalogWorkspace>
               </Surface>
             </main>
           </Suspense>
