@@ -30,7 +30,7 @@ export default function ProductDetail() {
     if (error.name === "CatalogError" && error.code === "ENTITY_NOT_FOUND") {
       return <EmptyState title="Produk tidak ditemukan" description="ID produk tidak valid." />;
     }
-    return <EmptyState title="Gagal memuat produk" description={error.message || "Kesalahan tidak diketahui"} />;
+    return <EmptyState title="Gagal memuat produk" description="Gagal memuat produk. Silakan coba lagi." />;
   }
   if (!product) return <EmptyState title="Produk tidak ditemukan" description="ID produk tidak valid." />;
 

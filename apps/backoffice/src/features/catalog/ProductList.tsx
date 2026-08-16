@@ -58,7 +58,13 @@ export default function ProductList() {
       .then(res => {
         setItems([...res.items]);
       })
-      .catch(err => setError(err.message))
+      .catch(err => {
+        if (err.name === "CatalogError") {
+          setError(err.message);
+        } else {
+          setError("Gagal memuat produk. Silakan coba lagi.");
+        }
+      })
       .finally(() => setLoading(false));
   }, [q, categoryId, brandId, status, trackInventory, sort]);
 

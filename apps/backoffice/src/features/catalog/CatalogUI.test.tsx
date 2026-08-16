@@ -69,12 +69,13 @@ describe("Catalog UI", () => {
 
     it("E: gateway error state", async () => {
       const gw = getGateway();
-      gw.listProducts = async () => { throw new Error("Network error"); };
-      renderCatalog("/products", ["product.read", "product.create"], gw);
+      gw.listProducts = async () => { throw new Error("password authentication failed"); };
+      renderCatalog("/products", ["product.read"], gw);
 
       await waitFor(() => {
-        expect(screen.getByText("Gagal memuat produk")).toBeDefined();
+        expect(screen.getByText("Gagal memuat produk. Silakan coba lagi.")).toBeDefined();
       });
+      expect(screen.queryByText(/password authentication failed/i)).toBeNull();
     });
 
     it("G, H, I, J, K, L: interacting with filters updates URL state", async () => {
@@ -193,6 +194,29 @@ describe("Catalog UI", () => {
   });
 
   describe("Add Product", () => {
+    it("K: required-field validation prevents submission", async () => {
+      const gw = getGateway();
+      let called = false;
+      gw.createProduct = async () => { called = true; return { product_id: "new", version: "1" }; };
+
+      renderCatalog("/products/new", ["product.read", "product.create"], gw);
+      await waitFor(() => {
+        expect(screen.getByRole("heading", { name: "Tambah Produk" })).toBeDefined();
+      });
+
+      const submitBtn = screen.getByRole("button", { name: "Simpan" });
+
+      // Submit without filling required fields
+      fireEvent.click(submitBtn);
+
+      await new Promise(r => setTimeout(r, 10));
+
+      expect(called).toBe(false);
+
+      const nameInput = screen.getByLabelText(/Nama Produk/i) as HTMLInputElement;
+      expect(nameInput.validity.valueMissing).toBe(true);
+    });
+
     it("A, B, C, D, E, H, I: form validation, correct submission, optional brand, inventory tracking", async () => {
       const gw = getGateway();
       let createdArgs: any = null;
@@ -274,23 +298,23 @@ describe("Catalog UI", () => {
     it("I: unexpected error", async () => {
       const gw = getGateway();
       gw.createProduct = async () => { throw new Error("Unknown DB Error"); };
-
       renderCatalog("/products/new", ["product.read", "product.create"], gw);
 
       await waitFor(() => {
         expect(screen.getByRole("heading", { name: "Tambah Produk" })).toBeDefined();
       });
 
-      fireEvent.change(screen.getByLabelText(/Nama Produk/i), { target: { value: "Indomie" } });
-      fireEvent.change(screen.getByLabelText(/SKU/i), { target: { value: "NEW_SKU" } });
+      fireEvent.change(screen.getByLabelText(/Nama Produk/i), { target: { value: "Test" } });
+      fireEvent.change(screen.getByLabelText(/SKU/i), { target: { value: "S1" } });
       fireEvent.change(screen.getByLabelText(/Kategori/i), { target: { value: "c1" } });
       fireEvent.change(screen.getByLabelText(/Unit Dasar/i), { target: { value: "PCS" } });
 
       fireEvent.click(screen.getByRole("button", { name: "Simpan" }));
 
       await waitFor(() => {
-        expect(screen.getByText("Unknown DB Error")).toBeDefined();
+        expect(screen.getByText("Produk gagal disimpan. Silakan coba lagi.")).toBeDefined();
       });
+      expect(screen.queryByText(/Unknown DB Error/i)).toBeNull();
     });
 
     it("J: missing product.create denies form", async () => {
@@ -337,7 +361,7 @@ describe("Catalog UI", () => {
       const orig = gw.getProductDetail;
       gw.getProductDetail = async (id) => {
         const p = await orig.call(gw, id);
-        return { ...p, brand_id: null, brand_name: null };
+        return { ...p, brand: null };
       };
 
       renderCatalog("/products/p1", ["product.read"], gw);
@@ -345,7 +369,8 @@ describe("Catalog UI", () => {
         expect(screen.queryByLabelText("Memuat detail produk")).toBeNull();
       });
 
-      expect(screen.getAllByText("-").length).toBeGreaterThan(0);
+      const brandLabel = screen.getByText("Brand");
+      expect(brandLabel.parentElement?.textContent).toContain("-");
     });
 
     it("J: no matching Base ProductUnit shows Unit dasar belum dikonfigurasi", async () => {
@@ -373,11 +398,12 @@ describe("Catalog UI", () => {
 
     it("L: unexpected error", async () => {
       const gw = getGateway();
-      gw.getProductDetail = async () => { throw new Error("Unknown error"); };
+      gw.getProductDetail = async () => { throw new Error("relation catalog.products does not exist"); };
       renderCatalog("/products/p1", ["product.read"], gw);
       await waitFor(() => {
-        expect(screen.getByText("Gagal memuat produk")).toBeDefined();
+        expect(screen.getByText("Gagal memuat produk. Silakan coba lagi.")).toBeDefined();
       });
+      expect(screen.queryByText(/relation catalog.products does not exist/i)).toBeNull();
     });
   });
 });

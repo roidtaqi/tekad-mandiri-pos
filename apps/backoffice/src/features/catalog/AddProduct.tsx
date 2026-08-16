@@ -28,10 +28,16 @@ export default function AddProduct() {
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
+  const [optionsError, setOptionsError] = useState<string | null>(null);
+
   useEffect(() => {
-    gateway.listCategories().then(setCategories).catch(console.error);
-    gateway.listBrands().then(setBrands).catch(console.error);
-  }, []);
+    Promise.all([
+      gateway.listCategories().then(setCategories),
+      gateway.listBrands().then(setBrands)
+    ]).catch(() => {
+      setOptionsError("Gagal memuat data opsi. Silakan muat ulang halaman.");
+    });
+  }, [gateway]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -59,7 +65,7 @@ export default function AddProduct() {
           setError(cErr.message);
         }
       } else {
-        setError(err.message || "Failed to save product");
+        setError("Produk gagal disimpan. Silakan coba lagi.");
       }
     } finally {
       setSaving(false);
@@ -68,6 +74,9 @@ export default function AddProduct() {
 
   if (!hasCachedPermission(authContext, "product.create")) {
     return <EmptyState title="Akses Ditolak" description="Anda tidak memiliki izin untuk menambah produk." />;
+  }
+  if (optionsError) {
+    return <EmptyState title="Kesalahan" description={optionsError} />;
   }
 
   return (
