@@ -96,10 +96,8 @@ describeWithPostgres("M1-002A: Identity Core Schema and System Roles", () => {
       WHERE table_schema = 'identity'
     `);
     const tables = res?.rows.map(r => r.table_name) ?? [];
-    expect(tables).not.toContain("devices");
-    expect(tables).not.toContain("sessions");
     expect(tables).not.toContain("terminal_device_assignments");
-    expect(tables).not.toContain("authorization_versions");
+    expect(tables).not.toContain("credentials");
   });
 
   it("E. exact expected column types are verified", async () => {
@@ -453,7 +451,8 @@ describeWithPostgres("M1-002A: Identity Core Schema and System Roles", () => {
     expect(filenames).toEqual([
       "000001_create_core_businesses_locations.sql",
       "000002_create_identity_core_schema.sql",
-      "000003_seed_permission_catalog_role_presets.sql"
+      "000003_seed_permission_catalog_role_presets.sql",
+      "000004_create_identity_devices_sessions_authorization_versions.sql"
     ]);
   });
 

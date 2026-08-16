@@ -5,3 +5,5 @@ export const SYSTEM_HEALTH_PATH = "/api/v1/system/health" as const;
 export interface SystemHealthResponse {
   readonly status: "ok";
 }
+
+export * from "./auth.js";
