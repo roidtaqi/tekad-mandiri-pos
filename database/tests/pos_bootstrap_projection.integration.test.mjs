@@ -104,6 +104,25 @@ describeWithPostgres("POS Catalog Bootstrap Projection Integration", () => {
       INSERT INTO catalog.barcodes (id, business_id, product_unit_id, barcode, is_internal, status)
       VALUES ($1, $2, $3, '00123', false, 'ACTIVE')
     `, [bId1, bId, puId1]);
+    
+    // Inactive elements for B1
+    const pIdInactive = "00000000-0000-0000-0000-000000000005";
+    await client?.query(`
+      INSERT INTO catalog.products (id, business_id, sku, name, category_id, base_unit_code, track_inventory, status)
+      VALUES ($1, $2, 'SKU-2', 'Product Inactive', $3, 'BOX', true, 'INACTIVE')
+    `, [pIdInactive, bId, cId]);
+
+    const puIdInactive = "00000000-0000-0000-0000-000000000006";
+    await client?.query(`
+      INSERT INTO catalog.product_units (id, business_id, product_id, unit_code, display_name, conversion_factor, can_sell, can_purchase, allow_decimal_qty, status)
+      VALUES ($1, $2, $3, 'BOX', 'Boxes', 10, true, true, false, 'INACTIVE')
+    `, [puIdInactive, bId, pIdInactive]);
+
+    const bIdInactive = "00000000-0000-0000-0000-000000000007";
+    await client?.query(`
+      INSERT INTO catalog.barcodes (id, business_id, product_unit_id, barcode, is_internal, status)
+      VALUES ($1, $2, $3, 'INACTIVE-BC', false, 'INACTIVE')
+    `, [bIdInactive, bId, puIdInactive]);
 
     // Setup another business to verify scoping
     const bId2 = wrongTenantCtx.business_id;
@@ -117,36 +136,84 @@ describeWithPostgres("POS Catalog Bootstrap Projection Integration", () => {
     `, [pId2, bId2, cId2]);
   });
 
-  it("1. builds correct bootstrap snapshot", async () => {
+  it("1. builds correct bootstrap snapshot preserving ACTIVE/INACTIVE", async () => {
+    // We intentionally test with posCtx (which lacks product.read) to prove it succeeds without it.
     const snap = await buildPosCatalogBootstrapProjection(posCtx, executor, serverTime);
 
     expect(snap.bootstrap_version).toBe(1);
     expect(snap.business_id).toBe(bId);
     expect(snap.server_time).toBe(serverTime);
 
-    // Products
-    expect(snap.products).toHaveLength(1);
-    expect(snap.products[0].sku).toBe("SKU-1");
-    expect(snap.products[0]).not.toHaveProperty("category_id"); // Ensures extra fields are dropped
-    expect(snap.products[0]).not.toHaveProperty("cost");
-    expect(snap.products[0]).not.toHaveProperty("stock");
+    // Products (ordered by ID ASC in projection)
+    expect(snap.products).toHaveLength(2);
+    const p1 = snap.products[0];
+    const p2 = snap.products[1];
+    expect(p1).toBeDefined();
+    expect(p2).toBeDefined();
+    if (!p1 || !p2) throw new Error("Missing product");
+
+    expect(p1.id).toBe("00000000-0000-0000-0000-000000000001");
+    expect(p1.sku).toBe("SKU-1");
+    expect(p1.status).toBe("ACTIVE");
+    expect(typeof p1.version).toBe("string");
+    expect(typeof p1.updated_at).toBe("string");
+    
+    // Explicitly check properties don't exist
+    expect(p1).not.toHaveProperty("category_id");
+    expect(p1).not.toHaveProperty("brand_id");
+    expect(p1).not.toHaveProperty("cost");
+    expect(p1).not.toHaveProperty("price");
+    expect(p1).not.toHaveProperty("margin");
+    expect(p1).not.toHaveProperty("stock");
+    expect(p1).not.toHaveProperty("supplier");
+
+    expect(p2.id).toBe("00000000-0000-0000-0000-000000000005");
+    expect(p2.sku).toBe("SKU-2");
+    expect(p2.status).toBe("INACTIVE");
 
     // Product Units
-    expect(snap.product_units).toHaveLength(1);
-    expect(snap.product_units[0].conversion_factor).toBe("1.00000000"); // Postgres NUMERIC mapping creates string
-    expect(typeof snap.product_units[0].conversion_factor).toBe("string");
+    expect(snap.product_units).toHaveLength(2);
+    const pu1 = snap.product_units[0];
+    const pu2 = snap.product_units[1];
+    expect(pu1).toBeDefined();
+    expect(pu2).toBeDefined();
+    if (!pu1 || !pu2) throw new Error("Missing product unit");
+
+    expect(pu1.conversion_factor).toBe("1.00000000"); // Postgres NUMERIC mapping creates string
+    expect(typeof pu1.conversion_factor).toBe("string");
+    expect(pu1.status).toBe("ACTIVE");
+    expect(typeof pu1.updated_at).toBe("string");
+    expect(typeof pu1.version).toBe("string");
+
+    expect(pu2.conversion_factor).toBe("10.00000000");
+    expect(pu2.status).toBe("INACTIVE");
 
     // Barcodes
-    expect(snap.barcodes).toHaveLength(1);
-    expect(snap.barcodes[0].barcode).toBe("00123");
-    expect(typeof snap.barcodes[0].barcode).toBe("string");
+    expect(snap.barcodes).toHaveLength(2);
+    const bc1 = snap.barcodes[0];
+    const bc2 = snap.barcodes[1];
+    expect(bc1).toBeDefined();
+    expect(bc2).toBeDefined();
+    if (!bc1 || !bc2) throw new Error("Missing barcode");
+
+    expect(bc1.barcode).toBe("00123");
+    expect(typeof bc1.barcode).toBe("string");
+    expect(bc1.status).toBe("ACTIVE");
+
+    expect(bc2.barcode).toBe("INACTIVE-BC");
+    expect(bc2.status).toBe("INACTIVE");
   });
 
   it("2. scopes to business_id", async () => {
     const snap = await buildPosCatalogBootstrapProjection(wrongTenantCtx, executor, serverTime);
     expect(snap.business_id).toBe(wrongTenantCtx.business_id);
     expect(snap.products).toHaveLength(1);
-    expect(snap.products[0].sku).toBe("SKU-B2");
+    
+    const p1 = snap.products[0];
+    expect(p1).toBeDefined();
+    if (!p1) throw new Error("Missing product");
+    expect(p1.sku).toBe("SKU-B2");
+
     expect(snap.product_units).toHaveLength(0);
     expect(snap.barcodes).toHaveLength(0);
   });

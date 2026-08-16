@@ -128,6 +128,9 @@ export class PosCatalogCache {
 
     for (const p of snapshot.products) {
       if (productIds.has(p.id)) throw new Error("Duplicate Product ID");
+      if (p.status !== "ACTIVE" && p.status !== "INACTIVE") {
+        throw new Error(`Invalid Product.status: ${String(p.status)}`);
+      }
       productIds.add(p.id);
     }
 
@@ -135,6 +138,12 @@ export class PosCatalogCache {
       if (productUnitIds.has(u.id)) throw new Error("Duplicate ProductUnit ID");
       if (!productIds.has(u.product_id)) {
         throw new Error("Dangling ProductUnit.product_id");
+      }
+      if (u.status !== "ACTIVE" && u.status !== "INACTIVE") {
+        throw new Error(`Invalid ProductUnit.status: ${String(u.status)}`);
+      }
+      if (typeof u.conversion_factor !== "string") {
+        throw new Error("ProductUnit.conversion_factor must be a string");
       }
       productUnitIds.add(u.id);
     }
@@ -144,6 +153,9 @@ export class PosCatalogCache {
       if (barcodeIds.has(b.id)) throw new Error("Duplicate Barcode ID");
       if (!productUnitIds.has(b.product_unit_id)) {
         throw new Error("Dangling Barcode.product_unit_id");
+      }
+      if (b.status !== "ACTIVE" && b.status !== "INACTIVE") {
+        throw new Error(`Invalid Barcode.status: ${String(b.status)}`);
       }
       if (typeof b.barcode !== "string") {
         throw new Error("Barcode must be a string");
@@ -159,7 +171,7 @@ export class PosCatalogCache {
 
     const businessId = snapshot.business_id;
 
-    // Explicit field mapping to drop sensitive/extra fields
+    // Explicit field mapping to drop sensitive/extra fields and override injected child identities
     const state: LocalCatalogBootstrapState = {
       business_id: businessId,
       bootstrap_version: 1,
@@ -184,7 +196,7 @@ export class PosCatalogCache {
       product_id: u.product_id,
       unit_code: u.unit_code,
       display_name: u.display_name,
-      conversion_factor: String(u.conversion_factor),
+      conversion_factor: u.conversion_factor,
       can_sell: u.can_sell,
       can_purchase: u.can_purchase,
       allow_decimal_qty: u.allow_decimal_qty,
@@ -197,7 +209,7 @@ export class PosCatalogCache {
       id: b.id,
       business_id: businessId,
       product_unit_id: b.product_unit_id,
-      barcode: String(b.barcode),
+      barcode: b.barcode,
       is_internal: b.is_internal,
       status: b.status,
       deactivated_at: b.deactivated_at,

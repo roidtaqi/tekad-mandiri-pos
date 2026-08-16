@@ -11,7 +11,7 @@ applications share an origin:
 
 | Application | Stable IndexedDB name | Current schema version |
 | --- | --- | ---: |
-| POS | `kastur-pos` | 1 |
+| POS | `kastur-pos` | 2 |
 | Back Office | `kastur-backoffice` | 1 |
 
 Database names do not contain Business, Location, User, or other domain IDs.
@@ -112,10 +112,18 @@ versionchange connection release, and reliable cleanup.
 
 Run it from the repository root with `npm run test:local-db`.
 
+## Catalog Cache Strategy
+
+The POS catalog cache is a server/cloud authoritative master projection.
+The following constraints apply:
+- **Only initial add-only bootstrap exists.**
+- **Repeated same-Business bootstrap is rejected.**
+- **No destructive clear+bulkPut is used.**
+- **No raw Dexie public access is exposed.**
+- **No sync cursor, outbox, or change feed is implemented.**
+
+Full bootstrap and rebootstrap logic remains scheduled for M3.
+
 ## Explicitly deferred
 
-There are currently no production object stores. Business, identity, catalog,
-pricing, inventory, purchasing, sales, shift/cash, returns, customer, outbox,
-cursor, failure-queue, bootstrap, or change-feed stores are deferred to their
-authorized vertical slices. This package also contains no generic repository,
-CRUD engine, snapshot replacement, or synchronization workflow.
+Currently, POS defines the `products`, `product_units`, `barcodes`, and `catalog_bootstrap_state` stores. Business, identity, pricing, inventory, purchasing, sales, shift/cash, returns, customer, outbox, cursor, failure-queue, and change-feed stores are deferred to their authorized vertical slices. This package also contains no generic repository, CRUD engine, snapshot replacement, or synchronization workflow.

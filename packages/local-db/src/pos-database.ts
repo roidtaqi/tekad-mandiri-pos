@@ -1,5 +1,4 @@
 import {
-  createLocalDatabase,
   defineLocalDatabase,
   DexieLocalDatabase,
   type CreateLocalDatabaseOptions,
@@ -55,7 +54,12 @@ class PosLocalDatabaseImpl
   }
 }
 
-export function createPosLocalDatabase(
+export function createPosLocalDatabase(): PosLocalDatabase {
+  return new PosLocalDatabaseImpl({});
+}
+
+/** @internal Internal test seam */
+export function _createPosLocalDatabaseInternal(
   options: CreateLocalDatabaseOptions = {},
 ): PosLocalDatabase {
   return new PosLocalDatabaseImpl(options);
