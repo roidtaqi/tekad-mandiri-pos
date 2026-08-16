@@ -15,6 +15,7 @@ This directory contains the repository's implementation authorities. Read [`../A
    - [D07 — Shift, Cash & Payment Control](./Kastur_Business_Rules_Domain_07_Shift_Cash_Payment_Control.md)
    - [D08 — Identity, Role, Permission & Audit](./Kastur_Business_Rules_Domain_08_Identity_Role_Permission_Audit.md)
    - [D09 — Customer, Return & Refund](./Kastur_Business_Rules_Domain_09_Customer_Return_Refund.md)
+   - [D10 — Offline, Sync & Data Authority](./Kastur_Business_Rules_Domain_10_Offline_Sync_Data_Authority.md)
 3. [Cross-Domain Matrix D01–D10](./Kastur_Business_Rules_Cross_Domain_Matrix_D01-D10.md)
 4. [Cross-Domain Gap Resolution v1](./Kastur_Cross_Domain_Gap_Resolution_v1.md)
 5. [User Journeys & Operational Flows v1](./Kastur_User_Journeys_Operational_Flows_v1.md)
@@ -42,7 +43,3 @@ The matching root handoff files remain as bootstrap entry points. The copies und
 
 - [Business Rules v1](<./Kastur Retail System — Business Rules v1.md>)
 - [PRD v2](<./Kastur Retail System — PRD v2.md>)
-
-## Known source-layout gap
-
-`AGENTS.md` refers to `docs/business-rules/D01...D10`, while the supplied locked domain files are currently flat under `docs/` and include D01–D09 only. No standalone D10 file was supplied. This index records the actual files without inventing or reorganizing business rules; a later documentation task should reconcile the path convention and missing D10 authority explicitly.

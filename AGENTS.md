@@ -76,7 +76,7 @@ Before changing domain behavior, read the relevant docs.
 Primary implementation inputs:
 
 1. `docs/Kastur_Product_Foundation_v1.md`
-2. `docs/business-rules/D01...D10`
+2. `docs/README.md` — authoritative index for the standalone D01–D10 Business Rules; all D01–D10 documents listed there are mandatory authorities
 3. `docs/Kastur_Business_Rules_Cross_Domain_Matrix_D01-D10.md`
 4. `docs/Kastur_Cross_Domain_Gap_Resolution_v1.md`
 5. `docs/Kastur_User_Journeys_Operational_Flows_v1.md`
@@ -522,7 +522,7 @@ forced-root Back behavior
 authoritative JS number money math
 ```
 
-Read `Kastur_Legacy_Code_Audit_v1.md` before copying legacy code.
+Read `docs/Kastur_Legacy_Code_Audit_v1.md` before copying legacy code.
 
 ---
 
