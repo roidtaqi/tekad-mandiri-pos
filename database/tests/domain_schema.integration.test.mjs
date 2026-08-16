@@ -100,24 +100,48 @@ describeWithPostgres("M1-001: Core Business and Location Schema", () => {
 
   it("E. creates tables with expected columns and types", async () => {
     const bResult = await client?.query(`
-      SELECT column_name, data_type 
+      SELECT column_name, data_type, character_maximum_length 
       FROM information_schema.columns 
       WHERE table_schema = 'core' AND table_name = 'businesses'
     `);
-    const bCols = bResult?.rows.map(r => r.column_name);
-    expect(bCols).toEqual(expect.arrayContaining([
-      "id", "name", "currency_code", "timezone", "status", "created_at", "updated_at", "version"
-    ]));
+    const bCols = bResult?.rows.reduce((acc, r) => {
+      acc[r.column_name] = { type: r.data_type, maxLength: r.character_maximum_length };
+      return acc;
+    }, {});
+    
+    expect(bCols).toMatchObject({
+      id: { type: 'uuid' },
+      name: { type: 'text' },
+      currency_code: { type: 'character', maxLength: 3 },
+      timezone: { type: 'text' },
+      status: { type: 'text' },
+      created_at: { type: 'timestamp with time zone' },
+      updated_at: { type: 'timestamp with time zone' },
+      version: { type: 'bigint' }
+    });
 
     const lResult = await client?.query(`
       SELECT column_name, data_type 
       FROM information_schema.columns 
       WHERE table_schema = 'core' AND table_name = 'locations'
     `);
-    const lCols = lResult?.rows.map(r => r.column_name);
-    expect(lCols).toEqual(expect.arrayContaining([
-      "id", "business_id", "code", "name", "type", "is_default", "status", "created_at", "updated_at", "version"
-    ]));
+    const lCols = lResult?.rows.reduce((acc, r) => {
+      acc[r.column_name] = r.data_type;
+      return acc;
+    }, {});
+
+    expect(lCols).toMatchObject({
+      id: 'uuid',
+      business_id: 'uuid',
+      code: 'text',
+      name: 'text',
+      type: 'text',
+      is_default: 'boolean',
+      status: 'text',
+      created_at: 'timestamp with time zone',
+      updated_at: 'timestamp with time zone',
+      version: 'bigint'
+    });
   });
 
   it("F. inserts a Business with valid values", async () => {
