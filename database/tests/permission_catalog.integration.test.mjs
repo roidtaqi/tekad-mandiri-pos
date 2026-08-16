@@ -179,7 +179,8 @@ describeWithPostgres("M1-002B: Permission Catalog and Built-in System Role Prese
       "000001_create_core_businesses_locations.sql",
       "000002_create_identity_core_schema.sql",
       "000003_seed_permission_catalog_role_presets.sql",
-      "000004_create_identity_devices_sessions_authorization_versions.sql"
+      "000004_create_identity_devices_sessions_authorization_versions.sql",
+      "000005_create_catalog_products_categories_brands.sql"
     ]);
   });
 
