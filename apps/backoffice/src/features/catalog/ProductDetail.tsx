@@ -14,19 +14,24 @@ export default function ProductDetail() {
   
   const [product, setProduct] = useState<ProductDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<any>(null);
 
   useEffect(() => {
     if (!productId) return;
     setLoading(true);
     gateway.getProductDetail(productId)
       .then(setProduct)
-      .catch(err => setError(err.message))
+      .catch(err => setError(err))
       .finally(() => setLoading(false));
-  }, [productId]);
+  }, [productId, gateway]);
 
   if (loading) return <Spinner label="Memuat detail produk" />;
-  if (error) return <EmptyState title="Gagal memuat produk" description={error} />;
+  if (error) {
+    if (error.name === "CatalogError" && error.code === "ENTITY_NOT_FOUND") {
+      return <EmptyState title="Produk tidak ditemukan" description="ID produk tidak valid." />;
+    }
+    return <EmptyState title="Gagal memuat produk" description={error.message || "Kesalahan tidak diketahui"} />;
+  }
   if (!product) return <EmptyState title="Produk tidak ditemukan" description="ID produk tidak valid." />;
 
   const hasBaseUnit = product.units.some(u => u.unit_code === product.base_unit_code);

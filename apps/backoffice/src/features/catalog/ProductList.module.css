@@ -1,0 +1,19 @@
+.desktopTable {
+  display: block;
+}
+
+.mobileList {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .desktopTable {
+    display: none;
+  }
+  
+  .mobileList {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+}

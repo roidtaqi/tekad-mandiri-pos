@@ -12,6 +12,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit"
   },
   "dependencies": {
+    "@kastur/auth-client": "*",
     "@kastur/contracts": "*",
     "@kastur/ui": "*",
     "react": "^19.2.8",

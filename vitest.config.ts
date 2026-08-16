@@ -20,7 +20,7 @@ export default defineConfig({
         root: fileURLToPath(new URL("./apps/backoffice/", import.meta.url)),
         test: {
           ...testDefaults,
-          environment: "node",
+          environment: "happy-dom",
           include: ["src/**/*.test.{ts,tsx}"],
           name: "backoffice",
         },

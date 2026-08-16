@@ -5,9 +5,13 @@ import {
 } from "@kastur/ui";
 import { CatalogCategoryOption, CatalogBrandOption, CatalogError } from "@kastur/contracts";
 import { useCatalogGateway } from "./CatalogContext";
+import { useAuthContext } from "../auth/AuthContext";
+import { hasCachedPermission } from "@kastur/auth-client";
+import { EmptyState } from "@kastur/ui";
 
 export default function AddProduct() {
   const gateway = useCatalogGateway();
+  const authContext = useAuthContext();
   const navigate = useNavigate();
 
   const [sku, setSku] = useState("");
@@ -60,6 +64,10 @@ export default function AddProduct() {
     } finally {
       setSaving(false);
     }
+  }
+
+  if (!hasCachedPermission(authContext, "product.create")) {
+    return <EmptyState title="Akses Ditolak" description="Anda tidak memiliki izin untuk menambah produk." />;
   }
 
   return (

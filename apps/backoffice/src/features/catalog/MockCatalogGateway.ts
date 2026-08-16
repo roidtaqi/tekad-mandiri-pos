@@ -72,15 +72,16 @@ let MOCK_PRODUCTS: any[] = [
 
 export class MockCatalogGateway implements CatalogGateway {
   async listProducts(query: ProductListQuery): Promise<ProductListResponse> {
-    await new Promise(r => setTimeout(r, 300)); // simulate network
+    await new Promise(r => setTimeout(r, 10)); // simulate network
     let items = [...MOCK_PRODUCTS];
 
     if (query.q) {
-      const q = query.q.toLowerCase();
+      const qLower = query.q.toLowerCase();
+      const exactQ = query.q;
       items = items.filter(p => 
-        p.name.toLowerCase().includes(q) || 
-        p.sku.toLowerCase().includes(q) ||
-        p.units.some((u: any) => u.barcodes.some((b: any) => b.barcode.toLowerCase().includes(q)))
+        p.name.toLowerCase().includes(qLower) || 
+        p.sku.toLowerCase().includes(qLower) ||
+        p.units.some((u: any) => u.barcodes.some((b: any) => b.barcode === exactQ))
       );
     }
     if (query.category_id) {
@@ -111,14 +112,14 @@ export class MockCatalogGateway implements CatalogGateway {
   }
 
   async getProductDetail(productId: string): Promise<ProductDetailResponse> {
-    await new Promise(r => setTimeout(r, 300));
+    await new Promise(r => setTimeout(r, 10));
     const p = MOCK_PRODUCTS.find(p => p.id === productId);
     if (!p) throw new CatalogError("ENTITY_NOT_FOUND", "Not found");
     return p;
   }
 
   async createProduct(req: CreateProductRequest): Promise<CreateProductResult> {
-    await new Promise(r => setTimeout(r, 500));
+    await new Promise(r => setTimeout(r, 10));
     if (MOCK_PRODUCTS.some(p => p.sku === req.sku)) {
       throw new CatalogError("SKU_ALREADY_EXISTS", "SKU already exists", "sku");
     }
