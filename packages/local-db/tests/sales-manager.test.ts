@@ -3,7 +3,7 @@ import {
   _createPosLocalDatabaseInternal,
   type PosLocalDatabase
 } from "../src/pos-database.js";
-import { CompleteSaleError, IDEMPOTENCY_KEY_REUSE_ERROR, SALE_CART_INTEGRITY_INVALID, SALE_NUMERIC_BOUNDARY_INVALID, SALE_UNIT_CONVERSION_INVALID, PAYMENT_INSUFFICIENT, SALE_PERMISSION_DENIED, SALE_AUTHORIZATION_EXPIRED } from "../src/sales-manager.js";
+import { IDEMPOTENCY_KEY_REUSE_ERROR, SALE_CART_INTEGRITY_INVALID, SALE_NUMERIC_BOUNDARY_INVALID, SALE_UNIT_CONVERSION_INVALID, PAYMENT_INSUFFICIENT, SALE_PERMISSION_DENIED, SALE_AUTHORIZATION_EXPIRED } from "../src/sales-manager.js";
 import { createTestDatabaseRuntime, type TestDatabaseRuntime } from "./test-runtime.js";
 
 describe("PosSalesManager", () => {
