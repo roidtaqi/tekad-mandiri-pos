@@ -79,7 +79,7 @@ uniqueness constraint.
 ### K. `active_context_key` is local concurrency infrastructure
 
 A deterministic JSON-serialized key built from
-`[business_id, location_id, device_id, cashier_user_id]` enforces
+`[business_id, location_id, device_id]` enforces
 at most one OPEN Shift per operational context. It has a Dexie
 unique index (`&active_context_key`) providing database-level race
 protection. Both application pre-check and native constraint

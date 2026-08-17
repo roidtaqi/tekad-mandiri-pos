@@ -148,18 +148,9 @@ test("SHIFT-06: duplicate same operational context rejects with ACTIVE_SHIFT_ALR
 
 // ─── SHIFT-07: different contexts may open independently ──────────────
 
-test("SHIFT-07: different user/device/location/business contexts may open independently", async () => {
+test("SHIFT-07: different device/location/business contexts may open independently", async () => {
   // Context A: default
   await db.shifts.openShift(makeInput());
-
-  // Context B: different user
-  const authDiffUser = makeAuth({
-    user: { id: "user-2", display_name: "Kasir 2" },
-  });
-  const resultB = await db.shifts.openShift(
-    makeInput({ auth: authDiffUser }),
-  );
-  expect(resultB.cashier_user_id).toBe("user-2");
 
   // Context C: different device
   const resultC = await db.shifts.openShift(
@@ -272,23 +263,21 @@ test("RACE-01/02: two concurrent opens for the same context result in exactly on
 
 // ─── READ-01: getActiveShift is exact context-scoped ──────────────────
 
-test("READ-01: getActiveShift is exact Business/User/Device/Location scoped", async () => {
+test("READ-01: getActiveShift is exact Business/Device/Location scoped", async () => {
   await db.shifts.openShift(makeInput());
 
   // Exact match returns the shift
-  const found = await db.shifts.getActiveShift("biz-1", "loc-1", "dev-1", "user-1");
+  const found = await db.shifts.getActiveShift("biz-1", "loc-1", "dev-1");
   expect(found).not.toBeNull();
   expect(found!.shift_id).toBeDefined();
 
   // Wrong business → null
-  expect(await db.shifts.getActiveShift("biz-X", "loc-1", "dev-1", "user-1")).toBeNull();
+  expect(await db.shifts.getActiveShift("biz-X", "loc-1", "dev-1")).toBeNull();
   // Wrong location → null
-  expect(await db.shifts.getActiveShift("biz-1", "loc-X", "dev-1", "user-1")).toBeNull();
+  expect(await db.shifts.getActiveShift("biz-1", "loc-X", "dev-1")).toBeNull();
   // Wrong device → null
-  expect(await db.shifts.getActiveShift("biz-1", "loc-1", "dev-X", "user-1")).toBeNull();
-  // Wrong user → null
-  expect(await db.shifts.getActiveShift("biz-1", "loc-1", "dev-1", "user-X")).toBeNull();
-});
+  expect(await db.shifts.getActiveShift("biz-1", "loc-1", "dev-X")).toBeNull();
+  });
 
 // ─── RST-01: restart preserves all fields exactly ─────────────────────
 
@@ -299,7 +288,7 @@ test("RST-01: restart preserves all Shift Open fields exactly", async () => {
   db.close();
   await db.open();
 
-  const restored = await db.shifts.getActiveShift("biz-1", "loc-1", "dev-1", "user-1");
+  const restored = await db.shifts.getActiveShift("biz-1", "loc-1", "dev-1");
   expect(restored).not.toBeNull();
   expect(restored!.shift_id).toBe(result.shift_id);
   expect(restored!.shift_number).toBe(result.shift_number);
@@ -322,7 +311,7 @@ test("LOCAL-03: open shift persists through close/reopen", async () => {
   db.close();
   await db.open();
 
-  const shift = await db.shifts.getActiveShift("biz-1", "loc-1", "dev-1", "user-1");
+  const shift = await db.shifts.getActiveShift("biz-1", "loc-1", "dev-1");
   expect(shift).not.toBeNull();
   expect(shift!.status).toBe("OPEN");
 });
@@ -341,8 +330,8 @@ test("LOCAL-04: Business A/B shift data coexist without clear/overwrite", async 
   });
   await db.shifts.openShift(makeInput({ auth: authB, device_id: "dev-B" }));
 
-  const shiftA = await db.shifts.getActiveShift("biz-1", "loc-1", "dev-1", "user-1");
-  const shiftB = await db.shifts.getActiveShift("biz-B", "loc-1", "dev-B", "user-B");
+  const shiftA = await db.shifts.getActiveShift("biz-1", "loc-1", "dev-1");
+  const shiftB = await db.shifts.getActiveShift("biz-B", "loc-1", "dev-B");
 
   expect(shiftA).not.toBeNull();
   expect(shiftB).not.toBeNull();
@@ -353,13 +342,13 @@ test("LOCAL-04: Business A/B shift data coexist without clear/overwrite", async 
 // ─── context key determinism ──────────────────────────────────────────
 
 test("buildActiveContextKey is deterministic and unambiguous", () => {
-  const key1 = buildActiveContextKey("b", "l", "d", "u");
-  const key2 = buildActiveContextKey("b", "l", "d", "u");
+  const key1 = buildActiveContextKey("b", "l", "d");
+  const key2 = buildActiveContextKey("b", "l", "d");
   expect(key1).toBe(key2);
-  expect(key1).toBe(JSON.stringify(["b", "l", "d", "u"]));
+  expect(key1).toBe(JSON.stringify(["b", "l", "d"]));
 
   // Different order → different key (no naive concatenation collision)
-  const key3 = buildActiveContextKey("b", "d", "l", "u");
+  const key3 = buildActiveContextKey("b", "d", "l");
   expect(key1).not.toBe(key3);
 });
 
@@ -398,4 +387,20 @@ describe("INVALID_SHIFT_CONTEXT for bad context fields", () => {
       db.shifts.openShift(makeInput({ auth })),
     ).rejects.toMatchObject({ code: INVALID_SHIFT_CONTEXT });
   });
+});
+
+// ─── RACE-03: device isolation prevents different cashiers ─────────────
+
+test("RACE-03: device isolation prevents different cashiers from opening concurrent shifts on the same device", async () => {
+  const authA = makeAuth({
+    user: { id: "user-A", display_name: "Cashier A" },
+  });
+  await db.shifts.openShift(makeInput({ auth: authA }));
+
+  const authB = makeAuth({
+    user: { id: "user-B", display_name: "Cashier B" },
+  });
+  await expect(
+    db.shifts.openShift(makeInput({ auth: authB })),
+  ).rejects.toMatchObject({ code: ACTIVE_SHIFT_ALREADY_EXISTS });
 });

@@ -54,9 +54,8 @@ export function buildActiveContextKey(
   businessId: string,
   locationId: string,
   deviceId: string,
-  cashierUserId: string,
 ): string {
-  return JSON.stringify([businessId, locationId, deviceId, cashierUserId]);
+  return JSON.stringify([businessId, locationId, deviceId]);
 }
 
 // ─── Shift Cache ───────────────────────────────────────────────────
@@ -152,7 +151,6 @@ export class PosShiftCache {
       business_id,
       location_id,
       device_id,
-      cashier_user_id,
     );
 
     // ── Build the shift record ────────────────────────────────────
@@ -214,13 +212,11 @@ export class PosShiftCache {
     businessId: string,
     locationId: string,
     deviceId: string,
-    cashierUserId: string,
   ): Promise<LocalShiftRecord | null> {
     const contextKey = buildActiveContextKey(
       businessId,
       locationId,
       deviceId,
-      cashierUserId,
     );
 
     const record = await this.db
