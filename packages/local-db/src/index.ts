@@ -53,9 +53,18 @@ export {
   EMPTY_CART,
   SALE_CART_INTEGRITY_INVALID,
   SALE_NUMERIC_BOUNDARY_INVALID,
+  SALE_UNIT_CONVERSION_INVALID,
   PAYMENT_INSUFFICIENT,
+  SALE_PERMISSION_DENIED,
+  SALE_AUTHORIZATION_EXPIRED,
   IDEMPOTENCY_KEY_REUSE_ERROR,
   type CompleteSaleInput,
+  type CompleteSaleResult,
+  type LocalCompletedTransaction,
+  type LocalCompletedTransactionItem,
+  type LocalCompletedPayment,
+  type LocalSaleStockMovement,
+  type CompletedSaleAggregate,
 } from "./sales-manager.js";
 export type {
   ProductLookupResult,

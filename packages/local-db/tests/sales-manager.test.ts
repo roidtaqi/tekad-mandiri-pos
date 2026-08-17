@@ -14,7 +14,7 @@ describe("PosSalesManager", () => {
   let cart: any;
 
   afterEach(async () => {
-    db.close();
+    if (db) db.close();
     await runtime.cleanup();
   });
 
@@ -88,18 +88,58 @@ describe("PosSalesManager", () => {
   };
 
   describe("AUTH-01..08, SHIFT-03..05, SALE-02..08 - Authorization & Shift & Identity & Bounds", () => {
-    it("AUTH-01..08: enforces required permissions and expiration", async () => {
-      // Missing permission
-      auth.permissions = ["workspace.pos.access"];
+    it("AUTH-01: valid full permissions succeeds", async () => {
       await expect(db.sales.completeSale({
-        auth, device_id: "d1", command_id: "cmd-p1", occurred_at: "2026-08-17T01:00:00Z", cart, amount_tendered: "200.0000"
-      })).rejects.toMatchObject({ code: SALE_PERMISSION_DENIED });
+        auth, device_id: "d1", command_id: "cmd-p-valid", occurred_at: "2026-08-17T01:00:00Z", cart, amount_tendered: "200.0000"
+      })).resolves.toBeDefined();
+    });
 
-      // Expired offline
-      auth.permissions = ["workspace.pos.access", "pos.use", "transaction.create", "transaction.complete", "payment.record"];
-      auth.offline_valid_until = "2026-08-16T00:00:00Z";
+    const permissionsToCheck = [
+      { name: "AUTH-02 missing workspace.pos.access rejects", perm: "workspace.pos.access" },
+      { name: "AUTH-03 missing pos.use rejects", perm: "pos.use" },
+      { name: "AUTH-04 missing transaction.create rejects", perm: "transaction.create" },
+      { name: "AUTH-05 missing transaction.complete rejects", perm: "transaction.complete" },
+      { name: "AUTH-06 missing payment.record rejects", perm: "payment.record" }
+    ];
+
+    for (const testCase of permissionsToCheck) {
+      it(testCase.name, async () => {
+        auth.permissions = auth.permissions.filter((p: string) => p !== testCase.perm);
+        await expect(db.sales.completeSale({
+          auth, device_id: "d1", command_id: "cmd-p1", occurred_at: "2026-08-17T01:00:00Z", cart, amount_tendered: "200.0000"
+        })).rejects.toMatchObject({ code: SALE_PERMISSION_DENIED });
+      });
+    }
+
+    it("AUTH-07 OWNER label with missing permissions rejects", async () => {
+      auth.user.role = "OWNER";
+      auth.permissions = [];
       await expect(db.sales.completeSale({
-        auth, device_id: "d1", command_id: "cmd-p2", occurred_at: "2026-08-17T01:00:00Z", cart, amount_tendered: "200.0000"
+        auth, device_id: "d1", command_id: "cmd-p7", occurred_at: "2026-08-17T01:00:00Z", cart, amount_tendered: "200.0000"
+      })).rejects.toMatchObject({ code: SALE_PERMISSION_DENIED });
+    });
+
+    it("AUTH-08 expired authorization rejects", async () => {
+      auth.offline_valid_until = "2026-08-16T00:00:00Z"; // Older than occurred_at
+      await expect(db.sales.completeSale({
+        auth, device_id: "d1", command_id: "cmd-p8", occurred_at: "2026-08-17T01:00:00Z", cart, amount_tendered: "200.0000"
+      })).rejects.toMatchObject({ code: SALE_AUTHORIZATION_EXPIRED });
+    });
+
+    it("malformed/missing authorization timestamps reject", async () => {
+      auth.offline_valid_until = null;
+      await expect(db.sales.completeSale({
+        auth, device_id: "d1", command_id: "cmd-p9", occurred_at: "2026-08-17T01:00:00Z", cart, amount_tendered: "200.0000"
+      })).rejects.toMatchObject({ code: SALE_AUTHORIZATION_EXPIRED });
+
+      auth.offline_valid_until = "invalid-date";
+      await expect(db.sales.completeSale({
+        auth, device_id: "d1", command_id: "cmd-p10", occurred_at: "2026-08-17T01:00:00Z", cart, amount_tendered: "200.0000"
+      })).rejects.toMatchObject({ code: SALE_AUTHORIZATION_EXPIRED });
+
+      auth.offline_valid_until = "2029-01-01T00:00:00Z";
+      await expect(db.sales.completeSale({
+        auth, device_id: "d1", command_id: "cmd-p11", occurred_at: "invalid-date", cart, amount_tendered: "200.0000"
       })).rejects.toMatchObject({ code: SALE_AUTHORIZATION_EXPIRED });
     });
 
@@ -150,10 +190,12 @@ describe("PosSalesManager", () => {
     const faults = ["after_transaction", "after_items", "after_payment", "after_stock", "before_outbox"] as const;
     for (const fault of faults) {
       it(`ATOM-01..05: rolls back entirely if ${fault} fails`, async () => {
+        db.sales._testFaultSeam = fault;
         const p = db.sales.completeSale({
           auth, device_id: "d1", command_id: `cmd-fault-${fault}`, occurred_at: "2026-08-17T01:00:00Z", cart, amount_tendered: "200.0000"
-        }, fault);
+        });
         await expect(p).rejects.toThrow(`Fault: ${fault}`);
+        delete db.sales._testFaultSeam;
         const counts = await getCounts();
         expect(counts).toEqual({ txCount: 0, itemCount: 0, pmCount: 0, smCount: 0, outCount: 0 });
       });
@@ -191,8 +233,8 @@ describe("PosSalesManager", () => {
     });
   });
 
-  describe("READ-01..03 - Immutable Read Boundary", () => {
-    it("returns typed aggregate exact match and deterministic line order", async () => {
+  describe("READ-01..03 & IDEM-05 - Immutable Read Boundary & Restart Proof", () => {
+    it("returns typed aggregate exact match and deterministic line order, survives restart", async () => {
       cart.lines.push({
         line_key: "k2",
         product_id: "p2",
@@ -213,23 +255,87 @@ describe("PosSalesManager", () => {
       });
 
       const res = await db.sales.completeSale({
-        auth, device_id: "d1", command_id: "cmd-read1", occurred_at: "2026-08-17T01:00:00Z", cart, amount_tendered: "250.0000"
+        auth, device_id: "d1", command_id: "cmd-restart", occurred_at: "2026-08-17T01:00:00Z", cart, amount_tendered: "250.0000"
       });
 
-      const aggregate = await db.sales.getCompletedSale(res.transaction_id);
+      let aggregate = await db.sales.getCompletedSale(res.transaction_id);
+
+      // Verify exact aggregate assertions
       expect(aggregate.transaction.transaction_id).toBe(res.transaction_id);
       expect(aggregate.transaction.status).toBe("COMPLETED");
       expect(aggregate.transaction.sync_status).toBe("PENDING");
+      expect(aggregate.transaction.business_id).toBe("b1");
+      expect(aggregate.transaction.location_id).toBe("l1");
+      expect(aggregate.transaction.device_id).toBe("d1");
+      expect(aggregate.transaction.shift_id).toBe("s1");
+      expect(aggregate.transaction.terminal_id).toBe("t1");
+      expect(aggregate.transaction.created_by).toBe("u1");
+      expect(aggregate.transaction.authorization_version).toBe(1);
+      expect(aggregate.transaction.correlation_id).toBeDefined();
+
       expect(aggregate.transaction.total_paid).toBe("250");
       expect(aggregate.transaction.change_amount).toBe("0");
 
       expect(aggregate.items).toHaveLength(2);
-      expect(aggregate.items[0].product_id).toBe("p1");
-      expect(aggregate.items[1].product_id).toBe("p2");
+      expect(aggregate.items[0]!.product_id).toBe("p1");
+      expect(aggregate.items[0]!.quantity).toBe("2");
+      expect(aggregate.items[0]!.conversion_snapshot).toBe("1");
+      expect(aggregate.items[0]!.base_quantity).toBe("2");
+      expect(aggregate.items[0]!.price_version_id_snapshot).toBe("pv1");
+      expect(aggregate.items[0]!.base_unit_price_snapshot).toBe("100");
+      expect(aggregate.items[0]!.line_total).toBe("200");
+      expect(aggregate.items[0]!.cost_status).toBe("COST_PENDING");
+      expect(aggregate.items[0]!.tier_code_snapshot).toBe("RETAIL");
+      expect(aggregate.items[0]!.promotion_discount_snapshot).toBe("0.0000");
+      expect(aggregate.items[0]!.manual_line_discount_snapshot).toBe("0.0000");
+      expect(aggregate.items[0]!.tax_mode_snapshot).toBe("NO_PPN");
+      expect(aggregate.items[0]!.tax_amount_snapshot).toBe("0.0000");
+
+      expect(aggregate.items[1]!.product_id).toBe("p2");
 
       expect(aggregate.payments).toHaveLength(1);
+      expect(aggregate.payments[0]!.method_code).toBe("CASH");
+      expect(aggregate.payments[0]!.amount).toBe("250");
+      expect(aggregate.payments[0]!.amount_tendered).toBe("250");
+      expect(aggregate.payments[0]!.change_amount).toBe("0");
+
       expect(aggregate.stock_movements).toHaveLength(2);
+      const sm1 = aggregate.stock_movements.find(sm => sm.product_id === "p1");
+      expect(sm1!.base_quantity_delta).toBe("-2"); // Exact negative base quantity
+
       expect(aggregate.transaction.transaction_number).toMatch(/^TRX-([0-9a-fA-F-]+)$/);
+
+      // 4. close DB
+      db.close();
+
+      // 5. reopen SAME database
+      db = _createPosLocalDatabaseInternal({
+        dependencies: runtime.dependencies,
+        databaseName: dbName,
+      });
+      await db.open();
+
+      // 6. getCompletedSale
+      const aggregateAfterRestart = await db.sales.getCompletedSale(res.transaction_id);
+      
+      // 7. prove immutable aggregate remains exact
+      expect(aggregateAfterRestart).toEqual(aggregate);
+
+      // 8. call completeSale again with SAME command_id/request
+      const resAfterRestart = await db.sales.completeSale({
+        auth, device_id: "d1", command_id: "cmd-restart", occurred_at: "2026-08-17T01:00:00Z", cart, amount_tendered: "250.0000"
+      });
+
+      // 9. prove returned transaction_id is the ORIGINAL
+      expect(resAfterRestart.transaction_id).toBe(res.transaction_id);
+
+      // 10. prove counts remain exactly
+      const counts = await getCounts();
+      expect(counts).toEqual({ txCount: 1, itemCount: 2, pmCount: 1, smCount: 2, outCount: 1 });
+      
+      // pending outbox survives restart check
+      const outCount = await (db as any)._database.table("outbox").where({ command_id: "cmd-restart" }).count();
+      expect(outCount).toBe(1);
     });
   });
 });

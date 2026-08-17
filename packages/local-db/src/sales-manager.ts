@@ -76,10 +76,119 @@ export interface CompleteSaleResult {
   transaction_id: string;
 }
 
+export interface LocalCompletedTransaction {
+  readonly transaction_id: string;
+  readonly command_id: string;
+  readonly business_id: string;
+  readonly location_id: string;
+  readonly terminal_id: string;
+  readonly device_id: string;
+  readonly shift_id: string;
+  readonly transaction_number: string;
+  readonly status: "COMPLETED";
+  readonly sync_status: "PENDING";
+  readonly customer_id: string | null;
+  readonly subtotal: string;
+  readonly promotion_discount_total: string;
+  readonly line_discount_total: string;
+  readonly transaction_discount_total: string;
+  readonly tax_total: string;
+  readonly grand_total: string;
+  readonly total_paid: string;
+  readonly change_amount: string;
+  readonly cost_status: "COST_PENDING" | string | null;
+  readonly created_by: string;
+  readonly authorization_version: number;
+  readonly occurred_at: string;
+  readonly completed_at: string;
+  readonly created_at: string;
+  readonly correlation_id: string;
+}
+
+export interface LocalCompletedTransactionItem {
+  readonly transaction_item_id: string;
+  readonly transaction_id: string;
+  readonly line_index: number;
+  readonly product_id: string;
+  readonly product_unit_id: string;
+  readonly product_name_snapshot: string;
+  readonly sku_snapshot: string;
+  readonly unit_code_snapshot: string;
+  readonly unit_name_snapshot: string;
+  readonly conversion_snapshot: string;
+  readonly quantity: string;
+  readonly base_quantity: string;
+  readonly price_version_id_snapshot: string;
+  readonly price_effective_from_snapshot: string;
+  readonly base_unit_price_snapshot: string;
+  readonly tier_code_snapshot: string;
+  readonly tier_unit_price_snapshot: string;
+  readonly promotion_id: string | null;
+  readonly promotion_discount_snapshot: string;
+  readonly manual_line_discount_snapshot: string;
+  readonly transaction_discount_allocation: string;
+  readonly final_unit_price_snapshot: string;
+  readonly line_total: string;
+  readonly tax_mode_snapshot: "NO_PPN" | string;
+  readonly tax_rate_snapshot: string;
+  readonly tax_amount_snapshot: string;
+  readonly cost_unit_snapshot: string | null;
+  readonly cost_status: "COST_PENDING" | string | null;
+  readonly track_inventory_snapshot: boolean;
+  readonly created_at: string;
+}
+
+export interface LocalCompletedPayment {
+  readonly payment_id: string;
+  readonly business_id: string;
+  readonly transaction_id: string;
+  readonly method_code: "CASH" | string;
+  readonly amount: string;
+  readonly amount_tendered: string;
+  readonly change_amount: string;
+  readonly status: "COMPLETED";
+  readonly confirmation_type: "CASH_CONFIRMED" | string;
+  readonly external_reference: string | null;
+  readonly received_at: string;
+  readonly completed_at: string;
+  readonly recorded_by: string;
+  readonly device_id: string;
+  readonly correlation_id: string;
+}
+
+export interface LocalSaleStockMovement {
+  readonly stock_movement_id: string;
+  readonly business_id: string;
+  readonly location_id: string;
+  readonly product_id: string;
+  readonly movement_type: "SALE" | string;
+  readonly base_quantity_delta: string;
+  readonly source_unit_id: string;
+  readonly source_quantity: string;
+  readonly conversion_snapshot: string;
+  readonly source_type: "SALE_TRANSACTION" | string;
+  readonly source_id: string;
+  readonly source_line_id: string;
+  readonly occurred_at: string;
+  readonly actor_user_id: string;
+  readonly device_id: string;
+  readonly correlation_id: string;
+}
+
+export interface CompletedSaleAggregate {
+  readonly transaction: LocalCompletedTransaction;
+  readonly items: readonly LocalCompletedTransactionItem[];
+  readonly payments: readonly LocalCompletedPayment[];
+  readonly stock_movements: readonly LocalSaleStockMovement[];
+}
+
 export class PosSalesManager {
+  // test fault seam
+  public _testFaultSeam?: string;
+
   constructor(private readonly db: Dexie) {}
 
-  async getCompletedSale(transactionId: string): Promise<{ transaction: any; items: any[]; payments: any[]; stock_movements: any[] }> {
+  async getCompletedSale(transactionId: string): Promise<CompletedSaleAggregate> {
     return this.db.transaction("r", 
       [this.db.table("transactions"), this.db.table("transaction_items"), this.db.table("payments"), this.db.table("stock_movements")], 
       async () => {
@@ -110,7 +219,7 @@ export class PosSalesManager {
     );
   }
 
-  async completeSale(input: CompleteSaleInput, _faultSeam?: string): Promise<CompleteSaleResult> {
+  async completeSale(input: CompleteSaleInput): Promise<CompleteSaleResult> {
     const { auth, device_id, command_id, occurred_at, cart, amount_tendered } = input;
 
     // Check authorization
@@ -127,7 +236,18 @@ export class PosSalesManager {
       }
     }
 
-    if (auth.offline_valid_until && new Date(auth.offline_valid_until) < new Date(occurred_at)) {
+    if (!auth.offline_valid_until || !occurred_at) {
+      throw new CompleteSaleError("Missing timestamp for authorization", SALE_AUTHORIZATION_EXPIRED);
+    }
+    
+    const validUntilMs = new Date(auth.offline_valid_until).getTime();
+    const occurredAtMs = new Date(occurred_at).getTime();
+
+    if (isNaN(validUntilMs) || isNaN(occurredAtMs)) {
+      throw new CompleteSaleError("Malformed timestamp for authorization", SALE_AUTHORIZATION_EXPIRED);
+    }
+
+    if (validUntilMs < occurredAtMs) {
       throw new CompleteSaleError("Offline authorization expired", SALE_AUTHORIZATION_EXPIRED);
     }
 
@@ -344,7 +464,7 @@ export class PosSalesManager {
           correlation_id: correlationId
         };
         await this.db.table("transactions").add(transaction);
-        if (_faultSeam === "after_transaction") throw new Error("Fault: after_transaction");
+        if (this._testFaultSeam === "after_transaction") throw new Error("Fault: after_transaction");
 
         let lineIndex = 0;
         const transactionItems = [];
@@ -409,7 +529,7 @@ export class PosSalesManager {
           }
         }
         await this.db.table("transaction_items").bulkAdd(transactionItems);
-        if (_faultSeam === "after_items") throw new Error("Fault: after_items");
+        if (this._testFaultSeam === "after_items") throw new Error("Fault: after_items");
 
         const payment = {
           payment_id: crypto.randomUUID(),
@@ -429,12 +549,12 @@ export class PosSalesManager {
           correlation_id: correlationId
         };
         await this.db.table("payments").add(payment);
-        if (_faultSeam === "after_payment") throw new Error("Fault: after_payment");
+        if (this._testFaultSeam === "after_payment") throw new Error("Fault: after_payment");
 
         if (stockMovements.length > 0) {
           await this.db.table("stock_movements").bulkAdd(stockMovements);
         }
-        if (_faultSeam === "after_stock") throw new Error("Fault: after_stock");
+        if (this._testFaultSeam === "after_stock") throw new Error("Fault: after_stock");
 
         const outboxPayload = JSON.stringify({
           transaction,
@@ -463,7 +583,7 @@ export class PosSalesManager {
           status: "PENDING",
           last_error: null
         };
-        if (_faultSeam === "before_outbox") throw new Error("Fault: before_outbox");
+        if (this._testFaultSeam === "before_outbox") throw new Error("Fault: before_outbox");
         await this.db.table("outbox").add(outboxRecord);
 
         return { transaction_id: transactionId };

@@ -16,6 +16,15 @@ We encountered issues with overlapping concerns, external domain logic leaking i
 4. **Collision Resistance:** `transaction_number` is derived directly from the canonical `transaction_id` (a UUID), avoiding time-based collision risks like `TX-${Date.now()}`.
 5. **Idempotency Fingerprinting:** Requests are fingerprinted based on an exact snapshot of the inputs (`cart.lines`, `occurred_at`, `device_id`, etc.). The transaction trap handles `ConstraintError` from Dexie to correctly route duplicate commands or surface `IDEMPOTENCY_KEY_REUSE_ERROR`.
 6. **Immutable Reads:** The module exposes a strictly typed `getCompletedSale(transactionId)` interface for downstream verification without exposing the raw storage primitives.
+7. **CompleteSale local atomic command:** CompleteSale is exactly one local atomic command using exactly five V5 stores.
+8. **POS V5 locked:** V1–V4 are immutable. POS is now V5.
+9. **Status strictness:** COMPLETED business status + PENDING sync status.
+10. **Math strictness:** Exact numeric boundaries/no implicit rounding, semantic CASH, no synthetic payment_method_id, payment amount != tendered/change.
+11. **Cart revalidation:** Captured conversion/tracking, immutable historical price snapshot, RETAIL/no promo/no discount/NO_PPN M2 snapshot, COST_PENDING/null, never fake cost zero.
+12. **Shift safety:** Terminal from active Shift only. Shift PENDING may complete Sale. Future Shift Open + outbox is atomic. V4 PENDING Shift V5 backfill is in place.
+13. **Stock Safety:** SALE Stock Movement Ledger handles inventory. `track_inventory=false` creates no movement. No stock balance overwrite.
+14. **Idempotency constraints:** command_id/request fingerprint idempotency with concurrent/restart retry semantics.
+15. **Deferred to future milestones:** No Cash Ledger, no PostgreSQL Sales schema, no sync engine. M3 owns sync/payment-method wire mapping. M4 owns Cash Ledger/full Shift-Cash. M6 owns costing. M7 owns richer pricing/tax/rounding. M2-008 owns Receipt.
 
 ## Consequences
 - The local persistence layer operates with higher isolation, increasing safety and testability for fault seams.
