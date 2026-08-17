@@ -17,6 +17,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit"
   },
   "dependencies": {
+    "@kastur/numeric": "^0.0.0",
     "dexie": "^4.4.5"
   },
   "devDependencies": {

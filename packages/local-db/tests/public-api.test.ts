@@ -37,6 +37,7 @@ describe("public local database API", () => {
       "CATALOG_ALREADY_BOOTSTRAPPED",
       "POS_LOCAL_DATABASE_NAME",
       "POS_LOCAL_DATABASE_SCHEMA_VERSION",
+      "PricingBootstrapError",
       "createBackOfficeLocalDatabase",
       "createPosLocalDatabase",
     ]);
@@ -52,7 +53,7 @@ describe("public local database API", () => {
     expect(POS_LOCAL_DATABASE_NAME).not.toBe(
       BACK_OFFICE_LOCAL_DATABASE_NAME,
     );
-    expect(POS_LOCAL_DATABASE_SCHEMA_VERSION).toBe(2);
+    expect(POS_LOCAL_DATABASE_SCHEMA_VERSION).toBe(3);
     expect(BACK_OFFICE_LOCAL_DATABASE_SCHEMA_VERSION).toBe(1);
 
     const pos = createPosLocalDatabase();
@@ -97,14 +98,12 @@ describe("current production definitions", () => {
     expect(definition.schemaVersions[0]?.stores).toEqual({});
 
     if (definition.application === "pos") {
-      expect(definition.currentSchemaVersion).toBe(2);
-      expect(definition.schemaVersions).toHaveLength(2);
-      expect(definition.schemaVersions[1]?.version).toBe(2);
-      expect(Object.keys(definition.schemaVersions[1]?.stores ?? {}).sort()).toEqual([
-        "barcodes",
-        "catalog_bootstrap_state",
-        "product_units",
-        "products",
+      expect(definition.currentSchemaVersion).toBe(3);
+      expect(definition.schemaVersions).toHaveLength(3);
+      expect(definition.schemaVersions[2]?.version).toBe(3);
+      expect(Object.keys(definition.schemaVersions[2]?.stores ?? {}).sort()).toEqual([
+        "pricing_bootstrap_state",
+        "published_retail_prices",
       ]);
     } else {
       expect(definition.currentSchemaVersion).toBe(1);
@@ -129,8 +128,10 @@ describe("current production definitions", () => {
       expect(objectStoreNames.sort()).toEqual([
         "barcodes",
         "catalog_bootstrap_state",
+        "pricing_bootstrap_state",
         "product_units",
         "products",
+        "published_retail_prices",
       ]);
     } else {
       expect(objectStoreNames).toEqual([]);
@@ -166,7 +167,7 @@ describe("current production definitions", () => {
       }),
     );
     await dbV2.open();
-    expect(dbV2.schemaVersion).toBe(2);
+    expect(dbV2.schemaVersion).toBe(3);
     dbV2.close();
   });
 

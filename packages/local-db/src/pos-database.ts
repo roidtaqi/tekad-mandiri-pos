@@ -5,10 +5,11 @@ import {
   type LocalDatabaseLifecycle,
 } from "./local-database";
 import { defineSchemaVersions } from "./schema-versions";
-import { PosCatalogCache } from "./catalog-cache";
+import { PosCatalogCache } from "./catalog-cache.js";
+import { PosPricingCache } from "./pricing-cache.js";
 
 export const POS_LOCAL_DATABASE_NAME = "kastur-pos";
-export const POS_LOCAL_DATABASE_SCHEMA_VERSION = 2;
+export const POS_LOCAL_DATABASE_SCHEMA_VERSION = 3;
 
 const posSchemaVersions = defineSchemaVersions(
   [
@@ -26,6 +27,14 @@ const posSchemaVersions = defineSchemaVersions(
       },
       version: 2,
     },
+    {
+      stores: {
+        published_retail_prices:
+          "&price_version_id, business_id, product_unit_id, &[business_id+product_unit_id], effective_from",
+        pricing_bootstrap_state: "&business_id, bootstrap_version, server_time",
+      },
+      version: 3,
+    },
   ],
   "pos local database",
 );
@@ -40,17 +49,21 @@ export const posLocalDatabaseDefinition = defineLocalDatabase({
 export interface PosLocalDatabase extends LocalDatabaseLifecycle {
   readonly application: "pos";
   readonly catalog: PosCatalogCache;
+  readonly pricing: PosPricingCache;
 }
+
 
 class PosLocalDatabaseImpl
   extends DexieLocalDatabase<"pos">
   implements PosLocalDatabase
 {
   readonly catalog: PosCatalogCache;
+  readonly pricing: PosPricingCache;
 
   constructor(options: CreateLocalDatabaseOptions) {
     super(posLocalDatabaseDefinition, options);
     this.catalog = new PosCatalogCache(this._database);
+    this.pricing = new PosPricingCache(this._database, this.catalog);
   }
 }
 

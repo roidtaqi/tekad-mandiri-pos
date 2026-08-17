@@ -21,4 +21,6 @@ export type {
   LocalPosProduct,
   LocalPosProductUnit,
   LocalPosBarcode,
-} from "./catalog-cache";
+} from "./catalog-cache.js";
+export { PricingBootstrapError } from "./pricing-cache.js";
+export type { PosPricingCache } from "./pricing-cache.js";

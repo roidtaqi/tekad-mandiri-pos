@@ -12,3 +12,4 @@ Material architecture changes belong here as focused ADRs. An ADR should state t
 - [ADR-0006: POS Catalog Bootstrap and Local Cache Boundary](./ADR-0006-pos-catalog-bootstrap-local-cache-boundary.md) — M1-007 POS Catalog Bootstrap and Local Cache Boundary.
 - [ADR-0007: Permission-Aware Query Redaction](./ADR-0007-permission-aware-query-redaction.md) — M1-008 Permission-Aware Query Redaction.
 - [ADR-0008: Shared Decimal / Money / Quantity Primitives](./ADR-0008-shared-decimal-money-quantity-primitives.md) — M2-001 Shared Decimal / Money / Quantity Primitives.
+- [ADR-0009: Minimal Published Retail Price Boundary](./ADR-0009-minimal-published-retail-price-boundary.md) — M2-002 Minimal Published Retail Price Boundary.

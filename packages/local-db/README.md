@@ -11,7 +11,7 @@ applications share an origin:
 
 | Application | Stable IndexedDB name | Current schema version |
 | --- | --- | ---: |
-| POS | `kastur-pos` | 2 |
+| POS | `kastur-pos` | 3 |
 | Back Office | `kastur-backoffice` | 1 |
 
 Database names do not contain Business, Location, User, or other domain IDs.
