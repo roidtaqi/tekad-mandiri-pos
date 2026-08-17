@@ -64,7 +64,7 @@ export function toFixedScale(
 }
 
 export function fitsPrecisionScale(
-  value: DecimalValue,
+  value: string,
   precision: number,
   scale: number
 ): boolean {
@@ -95,7 +95,7 @@ export function fitsPrecisionScale(
 }
 
 export function assertFitsPrecisionScale(
-  value: DecimalValue,
+  value: string,
   precision: number,
   scale: number
 ): void {

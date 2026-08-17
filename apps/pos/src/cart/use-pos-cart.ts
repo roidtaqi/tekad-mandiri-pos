@@ -10,12 +10,15 @@ import {
   calculateCartTotals,
 } from "@kastur/domain";
 import type { ProductLookupResult } from "@kastur/local-db";
+import type { ScannerCaptureResult } from "../scanner/use-scanner-capture.js";
 
 export function usePosCart(businessId: string) {
   const [cart, setCart] = useState<Cart>(() => createCart(businessId));
 
-  const addScannedItem = useCallback((result: ProductLookupResult) => {
-    setCart(prev => addItem(prev, result, "1"));
+  const addScannedItem = useCallback((result: ScannerCaptureResult<ProductLookupResult>) => {
+    if (result.type === "SUCCESS") {
+      setCart(prev => addItem(prev, result.payload, "1"));
+    }
   }, []);
 
   const changeQuantity = useCallback((lineKey: string, quantity: string) => {

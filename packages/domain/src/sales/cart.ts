@@ -5,6 +5,7 @@ import {
   parseQuantity, 
   quantityAdd, 
   quantityCompare,
+  fitsPrecisionScale,
   type MoneyValue,
   type QuantityValue
 } from "@kastur/numeric";
@@ -83,6 +84,12 @@ function generateLineKey(productUnitId: string, priceVersionId: string): string 
   return JSON.stringify([productUnitId, priceVersionId]);
 }
 
+function assertQuantityPrecision(qty: QuantityValue): void {
+  if (!fitsPrecisionScale(qty, 20, 6)) {
+    throw new CartError("Invalid cart quantity precision", INVALID_CART_QUANTITY);
+  }
+}
+
 function validateQuantity(quantity: string, allowDecimal: boolean): QuantityValue {
   let canonicalQty: QuantityValue;
   try {
@@ -90,6 +97,8 @@ function validateQuantity(quantity: string, allowDecimal: boolean): QuantityValu
   } catch {
     throw new CartError("Invalid cart quantity format", INVALID_CART_QUANTITY);
   }
+
+  assertQuantityPrecision(canonicalQty);
 
   if (quantityCompare(canonicalQty, parseQuantity("0")) <= 0) {
     throw new CartError("Quantity must be greater than zero", INVALID_CART_QUANTITY);

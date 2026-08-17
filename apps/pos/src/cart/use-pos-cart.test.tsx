@@ -24,7 +24,7 @@ describe("usePosCart Scanner->Cart Handoff", () => {
   it("SCAN-01: Scanner SUCCESS adds one item", () => {
     const { result } = renderHook(() => usePosCart("biz-1"));
     act(() => {
-      result.current.addScannedItem(mockLookupResult());
+      result.current.addScannedItem({ type: "SUCCESS", barcode: "123", payload: mockLookupResult() });
     });
     expect(result.current.cart.lines).toHaveLength(1);
     expect(result.current.cart.lines[0]!.quantity).toBe("1");
@@ -35,18 +35,34 @@ describe("usePosCart Scanner->Cart Handoff", () => {
     const { result } = renderHook(() => usePosCart("biz-1"));
     const item = mockLookupResult();
     act(() => {
-      result.current.addScannedItem(item);
-      result.current.addScannedItem(item);
+      result.current.addScannedItem({ type: "SUCCESS", barcode: "123", payload: item });
+      result.current.addScannedItem({ type: "SUCCESS", barcode: "123", payload: item });
     });
     expect(result.current.cart.lines).toHaveLength(1);
     expect(result.current.cart.lines[0]!.quantity).toBe("2");
     expect(result.current.totals.gross_subtotal).toBe("200");
   });
   
+  it("SCAN-03: Scanner FAILURE leaves Cart unchanged", () => {
+    const { result } = renderHook(() => usePosCart("biz-1"));
+    act(() => {
+      result.current.addScannedItem({ type: "SUCCESS", barcode: "123", payload: mockLookupResult() });
+    });
+    const initialLines = result.current.cart.lines;
+    const initialTotals = result.current.totals;
+    
+    act(() => {
+      result.current.addScannedItem({ type: "FAILURE", barcode: "UNKNOWN", error: "Not found" });
+    });
+    
+    expect(result.current.cart.lines).toBe(initialLines);
+    expect(result.current.totals).toBe(initialTotals);
+  });
+  
   it("allows setting line quantity and removing line", () => {
     const { result } = renderHook(() => usePosCart("biz-1"));
     act(() => {
-      result.current.addScannedItem(mockLookupResult());
+      result.current.addScannedItem({ type: "SUCCESS", barcode: "123", payload: mockLookupResult() });
     });
     const lineKey = result.current.cart.lines[0]!.line_key;
     
@@ -64,8 +80,8 @@ describe("usePosCart Scanner->Cart Handoff", () => {
   it("allows clearing the cart", () => {
     const { result } = renderHook(() => usePosCart("biz-1"));
     act(() => {
-      result.current.addScannedItem(mockLookupResult());
-      result.current.addScannedItem(mockLookupResult({ product_unit_id: "pu2", price_version_id: "pv2" }));
+      result.current.addScannedItem({ type: "SUCCESS", barcode: "123", payload: mockLookupResult() });
+      result.current.addScannedItem({ type: "SUCCESS", barcode: "456", payload: mockLookupResult({ product_unit_id: "pu2", price_version_id: "pv2" }) });
     });
     expect(result.current.cart.lines).toHaveLength(2);
     

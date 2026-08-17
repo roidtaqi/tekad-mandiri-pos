@@ -135,6 +135,34 @@ test("QTY-07: Resulting merged quantity remains exact and NUMERIC(20,6)-safe", (
   expect(cart.lines[0]!.quantity).toBe("99999999999999.234567");
 });
 
+test("QTY-08: Cart quantity precision enforces NUMERIC(20,6)", () => {
+  let cart = createCart("biz-1");
+  const item = mockLookupResult({ allow_decimal_qty: true });
+  
+  // Valid boundaries
+  cart = addItem(cart, item, "99999999999999.123456");
+  expect(cart.lines[0]!.quantity).toBe("99999999999999.123456");
+  
+  cart = setLineQuantity(cart, cart.lines[0]!.line_key, "99999999999999.234567");
+  expect(cart.lines[0]!.quantity).toBe("99999999999999.234567");
+
+  // Invalid: exceeds precision
+  expect(() => addItem(cart, item, "100000000000000")).toThrowError(
+    expect.objectContaining({ code: INVALID_CART_QUANTITY })
+  );
+
+  // Invalid: exceeds scale
+  expect(() => addItem(cart, item, "99999999999999.1234567")).toThrowError(
+    expect.objectContaining({ code: INVALID_CART_QUANTITY })
+  );
+
+  // Invalid merge: 99999999999999.999999 + 0.000001 = 100000000000000.000000 (exceeds precision)
+  cart = setLineQuantity(cart, cart.lines[0]!.line_key, "99999999999999.999999");
+  expect(() => addItem(cart, item, "0.000001")).toThrowError(
+    expect.objectContaining({ code: INVALID_CART_QUANTITY })
+  );
+});
+
 test("TOTAL-01: line_total = exact unit_price × quantity", () => {
   let cart = createCart("biz-1");
   cart = addItem(cart, mockLookupResult({ unit_price: "3.55" }), "2");
