@@ -3,7 +3,7 @@ import {
   _createPosLocalDatabaseInternal,
   type PosLocalDatabase
 } from "../src/pos-database.js";
-import { IDEMPOTENCY_KEY_REUSE_ERROR, SALE_CART_INTEGRITY_INVALID, SALE_NUMERIC_BOUNDARY_INVALID, SALE_UNIT_CONVERSION_INVALID, PAYMENT_INSUFFICIENT, SALE_PERMISSION_DENIED, SALE_AUTHORIZATION_EXPIRED } from "../src/sales-manager.js";
+import { _setSalesFaultForTest, IDEMPOTENCY_KEY_REUSE_ERROR, SALE_CART_INTEGRITY_INVALID, SALE_NUMERIC_BOUNDARY_INVALID, SALE_UNIT_CONVERSION_INVALID, PAYMENT_INSUFFICIENT, SALE_PERMISSION_DENIED, SALE_AUTHORIZATION_EXPIRED, SALE_TERMINAL_REQUIRED } from "../src/sales-manager.js";
 import { createTestDatabaseRuntime, type TestDatabaseRuntime } from "./test-runtime.js";
 
 describe("PosSalesManager", () => {
@@ -112,7 +112,7 @@ describe("PosSalesManager", () => {
     }
 
     it("AUTH-07 OWNER label with missing permissions rejects", async () => {
-      auth.user.role = "OWNER";
+      auth.user.primary_role = "OWNER";
       auth.permissions = [];
       await expect(db.sales.completeSale({
         auth, device_id: "d1", command_id: "cmd-p7", occurred_at: "2026-08-17T01:00:00Z", cart, amount_tendered: "200.0000"
@@ -158,6 +158,17 @@ describe("PosSalesManager", () => {
         auth, device_id: "d2", command_id: "cmd-s1", occurred_at: "2026-08-17T01:00:00Z", cart, amount_tendered: "200.0000"
       })).rejects.toThrowError("No active shift found");
     });
+
+    it("requires terminal_id despite PENDING sync status", async () => {
+      await (db as any)._database.table("shifts").update("s1", { terminal_id: null });
+      
+      await expect(db.sales.completeSale({
+        auth, device_id: "d1", command_id: "cmd-term1", occurred_at: "2026-08-17T01:00:00Z", cart, amount_tendered: "200.0000"
+      })).rejects.toMatchObject({ code: SALE_TERMINAL_REQUIRED });
+      
+      const counts = await getCounts();
+      expect(counts).toEqual({ txCount: 0, itemCount: 0, pmCount: 0, smCount: 0, outCount: 0 });
+    });
   });
 
   describe("NUM-01..04, SNAP-01..08, PAY-03..05 - Numeric boundaries and exact evaluation", () => {
@@ -190,12 +201,12 @@ describe("PosSalesManager", () => {
     const faults = ["after_transaction", "after_items", "after_payment", "after_stock", "before_outbox"] as const;
     for (const fault of faults) {
       it(`ATOM-01..05: rolls back entirely if ${fault} fails`, async () => {
-        db.sales._testFaultSeam = fault;
+        _setSalesFaultForTest(db.sales, fault);
         const p = db.sales.completeSale({
           auth, device_id: "d1", command_id: `cmd-fault-${fault}`, occurred_at: "2026-08-17T01:00:00Z", cart, amount_tendered: "200.0000"
         });
         await expect(p).rejects.toThrow(`Fault: ${fault}`);
-        delete db.sales._testFaultSeam;
+        _setSalesFaultForTest(db.sales, undefined);
         const counts = await getCounts();
         expect(counts).toEqual({ txCount: 0, itemCount: 0, pmCount: 0, smCount: 0, outCount: 0 });
       });

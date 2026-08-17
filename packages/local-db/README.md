@@ -159,4 +159,18 @@ The Complete Sale mechanism creates a local offline business fact that is durabl
 - **Zero Domain Imports**: All numeric logic uses strictly pure primitives from `@kastur/numeric`; no runtime `@kastur/domain` code is imported into `@kastur/local-db`.
 - **Immutable Read Boundary**: Data reads are only served via structured aggregates via `getCompletedSale()`.
 
-Business, identity, inventory, purchasing, sales, returns, customer, outbox, cursor, failure-queue, and change-feed stores are deferred to their authorized vertical slices. This package also contains no generic repository, CRUD engine, or synchronization workflow.
+Present in POS V5:
+- local completed Sales facts
+- SALE stock_movements
+- durable outbox
+
+Still deferred:
+- purchasing
+- returns
+- customer
+- sync cursor
+- change feed
+- failure queue
+- future domain-specific stores
+
+This package contains no generic repository, CRUD engine, or M3 synchronization workflow.
