@@ -5,3 +5,5 @@ export * from "./catalog/queries.js";
 export * from "./pricing/index.js";
 export * from "./sales/cart-errors.js";
 export * from "./sales/cart.js";
+export * from "./sales/payment-errors.js";
+export * from "./sales/cash-settlement.js";
