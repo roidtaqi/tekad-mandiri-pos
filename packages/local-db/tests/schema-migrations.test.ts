@@ -433,3 +433,94 @@ describe("migration behavior", () => {
     expect(await reused.table<NeutralRecord>("records").count()).toBe(0);
   });
 });
+
+describe("POS V5 shift outbox backfill", () => {
+  it("backfills outbox for PENDING shifts exactly once during V5 upgrade", async () => {
+    // 1. Setup V4 database with pending shifts
+    const { posLocalDatabaseDefinition } = await import("../src/pos-database");
+    
+    const databaseName = runtime.createDatabaseName("v5-backfill");
+    
+    // Create V4 database manually with only V1-V4 definitions to insert legacy data
+    const versionFourSchema = posLocalDatabaseDefinition.schemaVersions.slice(0, 4);
+    
+    const v4Db = runtime.track(
+      new Dexie(databaseName, {
+        autoOpen: false,
+        ...runtime.dependencies,
+      })
+    );
+    
+    registerSchemaVersions(v4Db, versionFourSchema, "v4-backfill");
+    await v4Db.open();
+    
+    // Insert a pending shift and a synced shift
+    await v4Db.table("shifts").bulkAdd([
+      {
+        shift_id: "shift-pending",
+        shift_number: "S-1",
+        business_id: "biz-1",
+        location_id: "loc-1",
+        cashier_user_id: "user-1",
+        device_id: "dev-1",
+        terminal_id: "term-1",
+        status: "OPEN",
+        sync_status: "PENDING",
+        opening_cash: "100.00",
+        opened_at: "2026-08-01T00:00:00Z",
+        authorization_version: 1,
+        active_context_key: "k1"
+      },
+      {
+        shift_id: "shift-synced",
+        shift_number: "S-2",
+        business_id: "biz-1",
+        location_id: "loc-1",
+        cashier_user_id: "user-1",
+        device_id: "dev-1",
+        terminal_id: "term-1",
+        status: "OPEN",
+        sync_status: "SYNCED",
+        opening_cash: "100.00",
+        opened_at: "2026-08-01T00:00:00Z",
+        authorization_version: 1,
+        active_context_key: "k2"
+      }
+    ]);
+    v4Db.close();
+
+    // 2. Open V5 database which will trigger upgrade
+    const v5Db = runtime.track(
+      new Dexie(databaseName, {
+        autoOpen: false,
+        ...runtime.dependencies,
+      })
+    );
+    registerSchemaVersions(v5Db, posLocalDatabaseDefinition.schemaVersions, "v5-backfill");
+    await v5Db.open();
+
+    const outboxRecords = await v5Db.table("outbox").toArray();
+    expect(outboxRecords).toHaveLength(1);
+    
+    const backfilled = outboxRecords[0];
+    expect(backfilled.command_type).toBe("cash.shift.open");
+    expect(backfilled.business_event_id).toBe("shift-pending");
+    expect(backfilled.command_id).toBe("shift-pending");
+    
+    // 3. Close and reopen to ensure backfill is idempotent / doesn't fail
+    v5Db.close();
+
+    const v5DbReopened = runtime.track(
+      new Dexie(databaseName, {
+        autoOpen: false,
+        ...runtime.dependencies,
+      })
+    );
+    registerSchemaVersions(v5DbReopened, posLocalDatabaseDefinition.schemaVersions, "v5-backfill-reopen");
+    await v5DbReopened.open();
+    
+    // Same outbox records
+    const outboxRecordsAfterReopen = await v5DbReopened.table("outbox").toArray();
+    expect(outboxRecordsAfterReopen).toHaveLength(1);
+  });
+});

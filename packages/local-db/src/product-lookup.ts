@@ -27,6 +27,8 @@ export interface ProductLookupResult {
   readonly unit_code: string;
   readonly allow_decimal_qty: boolean;
   readonly price_version_id: string;
+  readonly conversion_factor: string;
+  readonly track_inventory: boolean;
 }
 
 export class PosProductLookup {
@@ -104,6 +106,8 @@ export class PosProductLookup {
       unit_code: unit.unit_code,
       allow_decimal_qty: unit.allow_decimal_qty,
       price_version_id: price.price_version_id,
+      conversion_factor: unit.conversion_factor,
+      track_inventory: product.track_inventory,
     };
   }
 

@@ -17,6 +17,8 @@ const mockLookupResult = (overrides: Partial<ProductLookupResult> = {}): Product
   unit_code: "PCS",
   allow_decimal_qty: false,
   price_version_id: "pv1",
+  conversion_factor: "1.00000000",
+  track_inventory: true,
   ...overrides,
 });
 

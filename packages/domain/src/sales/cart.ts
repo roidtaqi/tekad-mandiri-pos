@@ -35,6 +35,9 @@ export interface CartLine {
   readonly quantity: QuantityValue;
   readonly unit_price: MoneyValue;
   readonly line_total: MoneyValue;
+  
+  readonly conversion_factor: string;
+  readonly track_inventory: boolean;
 }
 
 export interface CartTotals {
@@ -60,6 +63,8 @@ export interface LookupResultBoundary {
   readonly unit_code: string;
   readonly allow_decimal_qty: boolean;
   readonly price_version_id: string;
+  readonly conversion_factor: string;
+  readonly track_inventory: boolean;
 }
 
 export function createCart(businessId: string): Cart {
@@ -170,6 +175,8 @@ export function addItem(cart: Cart, item: LookupResultBoundary, quantity: string
     quantity: validatedQty,
     unit_price: unitPrice,
     line_total: lineTotal,
+    conversion_factor: item.conversion_factor,
+    track_inventory: item.track_inventory,
   };
 
   return {

@@ -9,9 +9,10 @@ import { PosCatalogCache } from "./catalog-cache.js";
 import { PosPricingCache } from "./pricing-cache.js";
 import { PosShiftCache } from "./shift-cache.js";
 import { PosProductLookup } from "./product-lookup.js";
+import { PosSalesManager } from "./sales-manager.js";
 
 export const POS_LOCAL_DATABASE_NAME = "kastur-pos";
-export const POS_LOCAL_DATABASE_SCHEMA_VERSION = 4;
+export const POS_LOCAL_DATABASE_SCHEMA_VERSION = 5;
 
 const posSchemaVersions: LocalSchemaVersion[] = [
   // Released V1 declarations are immutable. Append V2; never rewrite V1.
@@ -43,6 +44,66 @@ const posSchemaVersions: LocalSchemaVersion[] = [
     },
     version: 4,
   },
+  {
+    stores: {
+      transactions:
+        "&transaction_id, &command_id, &[business_id+transaction_number], business_id, shift_id, status, sync_status, occurred_at",
+      transaction_items:
+        "&transaction_item_id, transaction_id, product_id, product_unit_id",
+      payments:
+        "&payment_id, transaction_id, business_id, method_code, status, received_at",
+      stock_movements:
+        "&stock_movement_id, business_id, location_id, product_id, source_id, &[business_id+source_type+source_id+source_line_id+movement_type], occurred_at",
+      outbox:
+        "&outbox_id, &command_id, business_id, business_event_id, command_type, status, created_at",
+    },
+    version: 5,
+    upgrade: (transaction) => {
+      const shifts = transaction.table("shifts");
+      const outbox = transaction.table("outbox");
+      
+      return shifts
+        .where("sync_status")
+        .equals("PENDING")
+        .toArray()
+        .then((pendingShifts) => {
+          if (pendingShifts.length === 0) return;
+          const outboxRecords = pendingShifts.map((shift) => ({
+            outbox_id: crypto.randomUUID(),
+            command_id: shift.shift_id,
+            business_id: shift.business_id,
+            business_event_id: shift.shift_id,
+            command_type: "cash.shift.open",
+            schema_version: 1,
+            location_id: shift.location_id,
+            device_id: shift.device_id,
+            authorization_version: shift.authorization_version,
+            correlation_id: shift.correlation_id || crypto.randomUUID(),
+            occurred_at: shift.opened_at,
+            payload: JSON.stringify({
+              shift_id: shift.shift_id,
+              shift_number: shift.shift_number,
+              business_id: shift.business_id,
+              location_id: shift.location_id,
+              terminal_id: shift.terminal_id,
+              cashier_user_id: shift.cashier_user_id,
+              device_id: shift.device_id,
+              opening_cash: shift.opening_cash,
+              opened_at: shift.opened_at,
+              authorization_version: shift.authorization_version,
+            }),
+            request_fingerprint: JSON.stringify({ backfill_shift: shift.shift_id }),
+            created_at: new Date().toISOString(),
+            attempt_count: 0,
+            last_attempt_at: null,
+            status: "PENDING",
+            last_error: null,
+          }));
+          
+          return outbox.bulkPut(outboxRecords);
+        });
+    },
+  },
 ];
 
 const posSchemaDeclarations = defineSchemaVersions(
@@ -63,8 +124,8 @@ export interface PosLocalDatabase extends LocalDatabaseLifecycle {
   readonly pricing: PosPricingCache;
   readonly shifts: PosShiftCache;
   readonly productLookup: PosProductLookup;
+  readonly sales: PosSalesManager;
 }
-
 
 class PosLocalDatabaseImpl
   extends DexieLocalDatabase<"pos">
@@ -74,6 +135,7 @@ class PosLocalDatabaseImpl
   readonly pricing: PosPricingCache;
   readonly shifts: PosShiftCache;
   readonly productLookup: PosProductLookup;
+  readonly sales: PosSalesManager;
 
   constructor(options: CreateLocalDatabaseOptions) {
     super(posLocalDatabaseDefinition, options);
@@ -81,6 +143,7 @@ class PosLocalDatabaseImpl
     this.pricing = new PosPricingCache(this._database, this.catalog);
     this.shifts = new PosShiftCache(this._database);
     this.productLookup = new PosProductLookup(this._database, this.pricing);
+    this.sales = new PosSalesManager(this._database);
   }
 }
 

@@ -25,10 +25,12 @@ const mockLookupResult = (overrides: Partial<LookupResultBoundary> = {}): Lookup
   sku: "SKU1",
   barcode: "123",
   unit_price: "100.00",
-  price_effective_from: "2020-01-01T00:00:00Z",
+  price_effective_from: "2026-08-01T00:00:00Z",
   unit_code: "PCS",
   allow_decimal_qty: false,
-  price_version_id: "pv1",
+  price_version_id: "pv-1",
+  conversion_factor: "1.00000000",
+  track_inventory: true,
   ...overrides,
 });
 

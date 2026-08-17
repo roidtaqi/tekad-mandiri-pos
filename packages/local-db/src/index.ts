@@ -44,6 +44,19 @@ export {
   INVALID_LOOKUP_INPUT,
   ProductLookupError,
 } from "./product-lookup.js";
+export {
+  PosSalesManager,
+  CompleteSaleError,
+  SHIFT_REQUIRED,
+  SALE_SHIFT_CONTEXT_MISMATCH,
+  SALE_TERMINAL_REQUIRED,
+  EMPTY_CART,
+  SALE_CART_INTEGRITY_INVALID,
+  SALE_NUMERIC_BOUNDARY_INVALID,
+  PAYMENT_INSUFFICIENT,
+  IDEMPOTENCY_KEY_REUSE_ERROR,
+  type CompleteSaleInput,
+} from "./sales-manager.js";
 export type {
   ProductLookupResult,
   PosProductLookup,

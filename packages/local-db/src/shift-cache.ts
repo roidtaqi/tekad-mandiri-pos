@@ -173,7 +173,7 @@ export class PosShiftCache {
 
     // ── Transactional insert with uniqueness enforcement ──────────
 
-    await this.db.transaction("rw", [this.db.table("shifts")], async () => {
+    await this.db.transaction("rw", [this.db.table("shifts"), this.db.table("outbox")], async () => {
       // Application-level pre-check for a clear error message
       const existing = await this.db
         .table("shifts")
@@ -188,8 +188,43 @@ export class PosShiftCache {
         );
       }
 
+      const outboxPayload = JSON.stringify({
+        shift_id: record.shift_id,
+        shift_number: record.shift_number,
+        business_id: record.business_id,
+        location_id: record.location_id,
+        terminal_id: record.terminal_id,
+        cashier_user_id: record.cashier_user_id,
+        device_id: record.device_id,
+        opening_cash: record.opening_cash,
+        opened_at: record.opened_at,
+        authorization_version: record.authorization_version,
+      });
+
+      const outboxRecord = {
+        outbox_id: crypto.randomUUID(),
+        command_id: record.shift_id,
+        business_id: record.business_id,
+        business_event_id: record.shift_id,
+        command_type: "cash.shift.open",
+        schema_version: 1,
+        location_id: record.location_id,
+        device_id: record.device_id,
+        authorization_version: record.authorization_version,
+        correlation_id: crypto.randomUUID(),
+        occurred_at: record.opened_at,
+        payload: outboxPayload,
+        request_fingerprint: JSON.stringify({ open_shift: record.shift_id }),
+        created_at: new Date().toISOString(),
+        attempt_count: 0,
+        last_attempt_at: null,
+        status: "PENDING",
+        last_error: null
+      };
+
       try {
         await this.db.table("shifts").add(record);
+        await this.db.table("outbox").add(outboxRecord);
       } catch (error: unknown) {
         // Map Dexie native ConstraintError to the same stable code
         if (
