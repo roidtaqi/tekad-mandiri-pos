@@ -37,3 +37,14 @@ export type {
   LocalShiftRecord,
   OpenShiftInput,
 } from "./shift-cache.js";
+export {
+  PRODUCT_NOT_FOUND,
+  AMBIGUOUS_IDENTIFIER,
+  NO_PUBLISHED_PRICE,
+  INVALID_LOOKUP_INPUT,
+  ProductLookupError,
+} from "./product-lookup.js";
+export type {
+  ProductLookupResult,
+  PosProductLookup,
+} from "./product-lookup.js";
