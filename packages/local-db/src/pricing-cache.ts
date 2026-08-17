@@ -3,8 +3,10 @@ import type { Dexie } from "dexie";
 import { PosCatalogCache } from "./catalog-cache.js";
 import { parseMoney } from "@kastur/numeric";
 
+export const PRICING_ALREADY_BOOTSTRAPPED = "PRICING_ALREADY_BOOTSTRAPPED";
+
 export class PricingBootstrapError extends Error {
-  constructor(message: string) {
+  constructor(message: string, public readonly code?: string) {
     super(message);
     this.name = "PricingBootstrapError";
   }
@@ -26,7 +28,7 @@ export class PosPricingCache {
     await this.db.transaction("rw", [this.db.table("pricing_bootstrap_state"), this.db.table("published_retail_prices"), this.db.table("product_units")], async () => {
       const existingState = await this.db.table("pricing_bootstrap_state").get(business_id);
       if (existingState) {
-        throw new PricingBootstrapError("PRICING_ALREADY_BOOTSTRAPPED");
+        throw new PricingBootstrapError("Pricing is already bootstrapped for this business.", PRICING_ALREADY_BOOTSTRAPPED);
       }
 
       const versionSet = new Set<string>();

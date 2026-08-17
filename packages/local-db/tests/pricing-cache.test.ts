@@ -66,7 +66,11 @@ test("POS current schema is V3, pricing bootstrap applies successfully and prese
   expect(state.bootstrap_version).toBe(1);
 
   // Repeat same-business bootstrap rejects with PRICING_ALREADY_BOOTSTRAPPED
-  await expect(db.pricing.applyInitialBootstrap(snapshot)).rejects.toThrow("PRICING_ALREADY_BOOTSTRAPPED");
+  await expect(db.pricing.applyInitialBootstrap(snapshot)).rejects.toThrowError(
+    expect.objectContaining({
+      code: "PRICING_ALREADY_BOOTSTRAPPED"
+    })
+  );
 });
 
 test("pricing bootstrap atomic rollback on failure - Dexie constraint failure", async () => {

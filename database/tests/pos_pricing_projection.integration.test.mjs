@@ -1,7 +1,7 @@
 import { test, expect, beforeAll, afterAll, describe } from "vitest";
 import { Client } from "pg";
 import { applyMigrations } from "../scripts/migrations.mjs";
-import crypto from "crypto";
+import crypto from "node:crypto";
 import { buildPosPublishedRetailPriceBootstrapProjection } from "../../packages/domain/src/pricing/queries.js";
 
 const configuredAdminUrl = process.env.TEST_DATABASE_URL?.trim();
@@ -47,17 +47,17 @@ describeWithPostgres("POS pricing projection integration", () => {
     const pIdB = crypto.randomUUID();
 
     await client.query(`
-      INSERT INTO core.businesses (id, name, type, currency_code, timezone, status)
+      INSERT INTO core.businesses (id, name, currency_code, timezone, status)
       VALUES 
-        ($1, 'Business A', 'RETAIL', 'IDR', 'Asia/Jakarta', 'ACTIVE'),
-        ($2, 'Business B', 'RETAIL', 'IDR', 'Asia/Jakarta', 'ACTIVE')
+        ($1, 'Business A', 'IDR', 'Asia/Jakarta', 'ACTIVE'),
+        ($2, 'Business B', 'IDR', 'Asia/Jakarta', 'ACTIVE')
     `, [bIdA, bIdB]);
 
     await client.query(`
-      INSERT INTO catalog.categories (id, business_id, name, is_active)
+      INSERT INTO catalog.categories (id, business_id, name, status)
       VALUES 
-        ($1, $2, 'Category A', true),
-        ($3, $4, 'Category B', true)
+        ($1, $2, 'Category A', 'ACTIVE'),
+        ($3, $4, 'Category B', 'ACTIVE')
     `, [cIdA, bIdA, cIdB, bIdB]);
 
     await client.query(`
@@ -149,8 +149,8 @@ describeWithPostgres("POS pricing projection integration", () => {
     const cId = crypto.randomUUID();
     const pId = crypto.randomUUID();
 
-    await client.query(`INSERT INTO core.businesses (id, name, type, currency_code, timezone, status) VALUES ($1, 'Business Filter', 'RETAIL', 'IDR', 'Asia/Jakarta', 'ACTIVE')`, [bId]);
-    await client.query(`INSERT INTO catalog.categories (id, business_id, name, is_active) VALUES ($1, $2, 'Category F', true)`, [cId, bId]);
+    await client.query(`INSERT INTO core.businesses (id, name, currency_code, timezone, status) VALUES ($1, 'Business Filter', 'IDR', 'Asia/Jakarta', 'ACTIVE')`, [bId]);
+    await client.query(`INSERT INTO catalog.categories (id, business_id, name, status) VALUES ($1, $2, 'Category F', 'ACTIVE')`, [cId, bId]);
     await client.query(`INSERT INTO catalog.products (id, business_id, category_id, sku, name, base_unit_code, track_inventory, status) VALUES ($1, $2, $3, 'SKUF', 'Product F', 'PCS', false, 'ACTIVE')`, [pId, bId, cId]);
 
     /** @type {import("../../packages/domain/src/core/context.js").ActorContext} */

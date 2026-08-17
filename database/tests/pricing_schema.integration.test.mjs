@@ -1,7 +1,7 @@
 import { test, expect, beforeAll, afterAll, describe } from "vitest";
 import { Client } from "pg";
 import { applyMigrations } from "../scripts/migrations.mjs";
-
+import crypto from "node:crypto";
 const configuredAdminUrl = process.env.TEST_DATABASE_URL?.trim();
 const describeWithPostgres = configuredAdminUrl === undefined ? describe.skip : describe;
 
@@ -47,13 +47,13 @@ describeWithPostgres("pricing schema integration", () => {
     ptId = crypto.randomUUID();
 
     await client.query(`
-      INSERT INTO core.businesses (id, name, type, currency_code, timezone, status)
-      VALUES ($1, 'Test Business', 'RETAIL', 'IDR', 'Asia/Jakarta', 'ACTIVE')
+      INSERT INTO core.businesses (id, name, currency_code, timezone, status)
+      VALUES ($1, 'Test Business', 'IDR', 'Asia/Jakarta', 'ACTIVE')
     `, [bId]);
 
     await client.query(`
-      INSERT INTO catalog.categories (id, business_id, name, is_active)
-      VALUES ($1, $2, 'Test Category', true)
+      INSERT INTO catalog.categories (id, business_id, name, status)
+      VALUES ($1, $2, 'Test Category', 'ACTIVE')
     `, [cId, bId]);
 
     await client.query(`
@@ -138,8 +138,8 @@ describeWithPostgres("pricing schema integration", () => {
   test("F. cross-Business ProductUnit FK fails", async () => {
     const bId2 = crypto.randomUUID();
     await client.query(`
-      INSERT INTO core.businesses (id, name, type, currency_code, timezone, status)
-      VALUES ($1, 'Test Business 2', 'RETAIL', 'IDR', 'Asia/Jakarta', 'ACTIVE')
+      INSERT INTO core.businesses (id, name, currency_code, timezone, status)
+      VALUES ($1, 'Test Business 2', 'IDR', 'Asia/Jakarta', 'ACTIVE')
     `, [bId2]);
     const pvId2 = crypto.randomUUID();
     await expect(
