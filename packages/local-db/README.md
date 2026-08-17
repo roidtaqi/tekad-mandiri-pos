@@ -134,6 +134,7 @@ M3 owns real Sync (cursors, change feeds, outboxes). M7 owns full Pricing govern
 - **POS V2**: Defines `products`, `product_units`, `barcodes`, and `catalog_bootstrap_state`.
 - **POS V3**: Defines `published_retail_prices` and `pricing_bootstrap_state`.
 - **POS V4**: Defines `shifts` with `&shift_id`, `&active_context_key`, and indexes for `business_id`, `status`, `sync_status`, `opened_at`.
+- **POS V5**: Defines local `transactions`, `transaction_items`, `payments`, `stock_movements`, and the generic `outbox` required for Offline CompleteSale persistence.
 
 ## Shift Cache (V4)
 
@@ -149,5 +150,13 @@ The following constraints apply:
 - **No PostgreSQL migration**: Cloud `cash.shifts` belongs to M4.
 - **No cash ledger / close / outbox**: M4 and M2-007 own those.
 - **No raw Dexie public access is exposed**.
+
+## Complete Sale Atomic Transaction (V5)
+
+The Complete Sale mechanism creates a local offline business fact that is durable across browser restarts.
+- **Single Native Transaction**: CompleteSale atomically binds `shifts`, `transactions`, `transaction_items`, `payments`, `stock_movements`, and `outbox` via Dexie `rw`.
+- **Idempotent / Conflict Proof**: Protects against concurrent races; traps `ConstraintError` to deduplicate payload-identical commands and blocks payload mutations.
+- **Zero Domain Imports**: All numeric logic uses strictly pure primitives from `@kastur/numeric`; no runtime `@kastur/domain` code is imported into `@kastur/local-db`.
+- **Immutable Read Boundary**: Data reads are only served via structured aggregates via `getCompletedSale()`.
 
 Business, identity, inventory, purchasing, sales, returns, customer, outbox, cursor, failure-queue, and change-feed stores are deferred to their authorized vertical slices. This package also contains no generic repository, CRUD engine, or synchronization workflow.

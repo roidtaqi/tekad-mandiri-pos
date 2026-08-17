@@ -16,3 +16,4 @@ Material architecture changes belong here as focused ADRs. An ADR should state t
 - [ADR-0010: POS Local Shift Opening Boundary](./ADR-0010-pos-local-shift-opening-boundary.md) — M2-003 POS Local Shift Opening Boundary.
 - [ADR-0011: POS Cart and Basic Totals Boundary](./ADR-0011-pos-cart-and-basic-totals-boundary.md) — M2-005 POS Cart and Basic Totals Boundary.
 - [ADR-0012: POS Cash Settlement Boundary](./ADR-0012-pos-cash-settlement-boundary.md) — M2-006 POS Cash Settlement Boundary.
+- [ADR-0013: Complete Sale Local Atomic Boundary](./ADR-0013-complete-sale-local-atomic-boundary.md) — M2-007 Complete Sale Local Atomic Boundary.

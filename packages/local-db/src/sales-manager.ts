@@ -9,11 +9,14 @@ import {
   parseQuantity,
   moneyAdd,
   multiplyMoneyByQuantity,
+  moneySubtract,
+  quantityCompare,
+  moneyCompare,
+  decimalCompare,
   type MoneyValue,
   type QuantityValue,
   type DecimalValue
 } from "@kastur/numeric";
-import { evaluateCashSettlement, type Cart } from "@kastur/domain";
 
 export const SHIFT_REQUIRED = "SHIFT_REQUIRED";
 export const SALE_SHIFT_CONTEXT_MISMATCH = "SALE_SHIFT_CONTEXT_MISMATCH";
@@ -21,14 +24,43 @@ export const SALE_TERMINAL_REQUIRED = "SALE_TERMINAL_REQUIRED";
 export const EMPTY_CART = "EMPTY_CART";
 export const SALE_CART_INTEGRITY_INVALID = "SALE_CART_INTEGRITY_INVALID";
 export const SALE_NUMERIC_BOUNDARY_INVALID = "SALE_NUMERIC_BOUNDARY_INVALID";
+export const SALE_UNIT_CONVERSION_INVALID = "SALE_UNIT_CONVERSION_INVALID";
 export const PAYMENT_INSUFFICIENT = "PAYMENT_INSUFFICIENT";
 export const IDEMPOTENCY_KEY_REUSE_ERROR = "IDEMPOTENCY_KEY_REUSE_ERROR";
+export const SALE_PERMISSION_DENIED = "SALE_PERMISSION_DENIED";
+export const SALE_AUTHORIZATION_EXPIRED = "SALE_AUTHORIZATION_EXPIRED";
 
 export class CompleteSaleError extends Error {
   constructor(message: string, public readonly code: string) {
     super(message);
     this.name = "CompleteSaleError";
   }
+}
+
+export interface CartLine {
+  readonly product_id: string;
+  readonly product_unit_id: string;
+  readonly product_name: string;
+  readonly unit_code: string;
+  readonly variant_name: string;
+  readonly sku: string;
+  readonly barcode: string | null;
+
+  readonly allow_decimal_qty: boolean;
+  readonly price_version_id: string;
+  readonly price_effective_from: string;
+
+  readonly quantity: string;
+  readonly unit_price: string;
+  readonly line_total: string;
+  
+  readonly conversion_factor: string;
+  readonly track_inventory: boolean;
+}
+
+export interface Cart {
+  readonly business_id: string;
+  readonly lines: readonly CartLine[];
 }
 
 export interface CompleteSaleInput {
@@ -38,14 +70,71 @@ export interface CompleteSaleInput {
   occurred_at: string;
   cart: Cart;
   amount_tendered: string;
-  _faultSeam?: "after_transaction" | "after_items" | "after_payment" | "after_stock" | "before_outbox";
+}
+
+export interface CompleteSaleResult {
+  transaction_id: string;
 }
 
 export class PosSalesManager {
   constructor(private readonly db: Dexie) {}
 
-  async completeSale(input: CompleteSaleInput): Promise<any> {
+  async getCompletedSale(transactionId: string): Promise<{ transaction: any; items: any[]; payments: any[]; stock_movements: any[] }> {
+    return this.db.transaction("r", 
+      [this.db.table("transactions"), this.db.table("transaction_items"), this.db.table("payments"), this.db.table("stock_movements")], 
+      async () => {
+        const transaction = await this.db.table("transactions").get(transactionId);
+        if (!transaction || transaction.status !== "COMPLETED") {
+          throw new Error("Transaction not found or not completed");
+        }
+
+        const items = await this.db.table("transaction_items")
+          .where({ transaction_id: transactionId })
+          .sortBy("line_index");
+
+        const payments = await this.db.table("payments")
+          .where({ transaction_id: transactionId })
+          .toArray();
+
+        const stock_movements = await this.db.table("stock_movements")
+          .where({ source_id: transactionId })
+          .toArray();
+
+        return {
+          transaction,
+          items,
+          payments,
+          stock_movements,
+        };
+      }
+    );
+  }
+
+  async completeSale(input: CompleteSaleInput, _faultSeam?: string): Promise<CompleteSaleResult> {
     const { auth, device_id, command_id, occurred_at, cart, amount_tendered } = input;
+
+    // Check authorization
+    const requiredPermissions = [
+      "workspace.pos.access",
+      "pos.use",
+      "transaction.create",
+      "transaction.complete",
+      "payment.record"
+    ];
+    for (const perm of requiredPermissions) {
+      if (!auth.permissions.includes(perm)) {
+        throw new CompleteSaleError(`Missing permission: ${perm}`, SALE_PERMISSION_DENIED);
+      }
+    }
+
+    if (auth.offline_valid_until && new Date(auth.offline_valid_until) < new Date(occurred_at)) {
+      throw new CompleteSaleError("Offline authorization expired", SALE_AUTHORIZATION_EXPIRED);
+    }
+
+    // Business Isolation
+    if (cart.business_id !== auth.membership.business_id) {
+      throw new CompleteSaleError("Cross-Business Cart", SALE_CART_INTEGRITY_INVALID);
+    }
 
     // 1. Validate + normalize immutable request values.
     if (!cart.lines || cart.lines.length === 0) {
@@ -60,8 +149,7 @@ export class PosSalesManager {
       let quantityStr: QuantityValue;
       try {
         quantityStr = parseQuantity(line.quantity);
-        const floatQ = parseFloat(quantityStr);
-        if (isNaN(floatQ) || floatQ <= 0) {
+        if (quantityCompare(quantityStr, parseQuantity("0")) <= 0) {
           throw new CompleteSaleError("Invalid cart line quantity", SALE_CART_INTEGRITY_INVALID);
         }
       } catch {
@@ -74,8 +162,7 @@ export class PosSalesManager {
       let unitPriceStr: MoneyValue;
       try {
         unitPriceStr = parseMoney(line.unit_price);
-        const floatP = parseFloat(unitPriceStr);
-        if (isNaN(floatP) || floatP < 0) {
+        if (moneyCompare(unitPriceStr, parseMoney("0")) < 0) {
           throw new CompleteSaleError("Invalid cart line price", SALE_CART_INTEGRITY_INVALID);
         }
       } catch {
@@ -88,12 +175,11 @@ export class PosSalesManager {
       let conversionFactorStr: DecimalValue;
       try {
         conversionFactorStr = parseDecimal(line.conversion_factor);
-        const floatC = parseFloat(conversionFactorStr);
-        if (isNaN(floatC) || floatC <= 0) {
-          throw new CompleteSaleError("Invalid cart line conversion factor", SALE_CART_INTEGRITY_INVALID);
+        if (decimalCompare(conversionFactorStr, parseDecimal("0")) <= 0) {
+          throw new CompleteSaleError("Invalid cart line conversion factor", SALE_UNIT_CONVERSION_INVALID);
         }
       } catch {
-        throw new CompleteSaleError("Invalid cart line conversion factor", SALE_CART_INTEGRITY_INVALID);
+        throw new CompleteSaleError("Invalid cart line conversion factor", SALE_UNIT_CONVERSION_INVALID);
       }
       if (!fitsPrecisionScale(conversionFactorStr, 20, 8)) {
         throw new CompleteSaleError("Conversion precision invalid", SALE_NUMERIC_BOUNDARY_INVALID);
@@ -128,14 +214,26 @@ export class PosSalesManager {
     }
 
     // Evaluate cash settlement
-    const settlement = evaluateCashSettlement(recomputedGrandTotal, amount_tendered);
-    if (settlement.status === "INSUFFICIENT") {
+    let tenderedStr: MoneyValue;
+    try {
+      tenderedStr = parseMoney(amount_tendered);
+      if (moneyCompare(tenderedStr, parseMoney("0")) < 0) {
+        throw new CompleteSaleError("Invalid tendered amount", SALE_CART_INTEGRITY_INVALID);
+      }
+    } catch {
+      throw new CompleteSaleError("Invalid tendered amount", SALE_CART_INTEGRITY_INVALID);
+    }
+    
+    if (moneyCompare(tenderedStr, recomputedGrandTotal) < 0) {
       throw new CompleteSaleError("Insufficient payment", PAYMENT_INSUFFICIENT);
     }
     
-    if (!fitsPrecisionScale(settlement.amount_tendered, 20, 4) ||
-        !fitsPrecisionScale(settlement.change_due, 20, 4) ||
-        !fitsPrecisionScale(settlement.payment_amount, 20, 4)) {
+    const changeDueStr = moneySubtract(tenderedStr, recomputedGrandTotal);
+    const paymentAmountStr = recomputedGrandTotal;
+
+    if (!fitsPrecisionScale(tenderedStr, 20, 4) ||
+        !fitsPrecisionScale(changeDueStr, 20, 4) ||
+        !fitsPrecisionScale(paymentAmountStr, 20, 4)) {
       throw new CompleteSaleError("Payment precision invalid", SALE_NUMERIC_BOUNDARY_INVALID);
     }
 
@@ -143,18 +241,29 @@ export class PosSalesManager {
     const requestFingerprintPayload = {
       business_id: auth.membership.business_id,
       user_id: auth.user.id,
+      authorization_version: auth.authorization_version,
       location_id: auth.default_location_id,
       device_id,
       occurred_at,
+      cart: {
+        business_id: cart.business_id
+      },
       lines: normalizedLines.map(l => ({
+        product_id: l.product_id,
         product_unit_id: l.product_unit_id,
+        product_name: l.product_name,
+        variant_name: l.variant_name,
+        unit_code: l.unit_code,
+        sku: l.sku,
         quantity: l.quantity,
         unit_price: l.unit_price,
+        line_total: l.line_total,
         conversion_factor: l.conversion_factor,
         track_inventory: l.track_inventory,
         price_version_id: l.price_version_id,
+        price_effective_from: l.price_effective_from,
       })),
-      amount_tendered: settlement.amount_tendered,
+      amount_tendered: tenderedStr,
     };
     const requestFingerprint = JSON.stringify(requestFingerprintPayload);
 
@@ -162,24 +271,6 @@ export class PosSalesManager {
     const businessId = auth.membership.business_id;
     const locationId = auth.default_location_id;
     const cashierUserId = auth.user.id;
-
-    // Check authorization
-    const requiredPermissions = [
-      "workspace.pos.access",
-      "pos.use",
-      "transaction.create",
-      "transaction.complete",
-      "payment.record"
-    ];
-    for (const perm of requiredPermissions) {
-      if (!auth.permissions.includes(perm)) {
-        throw new CompleteSaleError(`Missing permission: ${perm}`, "PERMISSION_DENIED");
-      }
-    }
-
-    if (auth.offline_valid_until && new Date(auth.offline_valid_until) < new Date(occurred_at)) {
-      throw new CompleteSaleError("Offline authorization expired", "AUTHORIZATION_EXPIRED");
-    }
 
     return this.db.transaction("rw", 
       [this.db.table("shifts"), this.db.table("transactions"), this.db.table("transaction_items"), this.db.table("payments"), this.db.table("stock_movements"), this.db.table("outbox")], 
@@ -222,7 +313,7 @@ export class PosSalesManager {
 
         const transactionId = crypto.randomUUID();
         const correlationId = crypto.randomUUID();
-        const transactionNumber = `TX-${Date.now()}`; // simple local placeholder
+        const transactionNumber = `TRX-${transactionId}`;
 
         const transaction = {
           transaction_id: transactionId,
@@ -242,8 +333,8 @@ export class PosSalesManager {
           transaction_discount_total: "0.0000",
           tax_total: "0.0000",
           grand_total: recomputedGrandTotal,
-          total_paid: settlement.payment_amount,
-          change_amount: settlement.change_due,
+          total_paid: paymentAmountStr,
+          change_amount: changeDueStr,
           cost_status: "COST_PENDING",
           created_by: cashierUserId,
           authorization_version: auth.authorization_version,
@@ -253,7 +344,7 @@ export class PosSalesManager {
           correlation_id: correlationId
         };
         await this.db.table("transactions").add(transaction);
-        if (input._faultSeam === "after_transaction") throw new Error("Fault: after_transaction");
+        if (_faultSeam === "after_transaction") throw new Error("Fault: after_transaction");
 
         let lineIndex = 0;
         const transactionItems = [];
@@ -318,16 +409,16 @@ export class PosSalesManager {
           }
         }
         await this.db.table("transaction_items").bulkAdd(transactionItems);
-        if (input._faultSeam === "after_items") throw new Error("Fault: after_items");
+        if (_faultSeam === "after_items") throw new Error("Fault: after_items");
 
         const payment = {
           payment_id: crypto.randomUUID(),
           business_id: businessId,
           transaction_id: transactionId,
           method_code: "CASH",
-          amount: recomputedGrandTotal,
-          amount_tendered: settlement.amount_tendered,
-          change_amount: settlement.change_due,
+          amount: paymentAmountStr,
+          amount_tendered: tenderedStr,
+          change_amount: changeDueStr,
           status: "COMPLETED",
           confirmation_type: "CASH_CONFIRMED",
           external_reference: null,
@@ -338,12 +429,12 @@ export class PosSalesManager {
           correlation_id: correlationId
         };
         await this.db.table("payments").add(payment);
-        if (input._faultSeam === "after_payment") throw new Error("Fault: after_payment");
+        if (_faultSeam === "after_payment") throw new Error("Fault: after_payment");
 
         if (stockMovements.length > 0) {
           await this.db.table("stock_movements").bulkAdd(stockMovements);
         }
-        if (input._faultSeam === "after_stock") throw new Error("Fault: after_stock");
+        if (_faultSeam === "after_stock") throw new Error("Fault: after_stock");
 
         const outboxPayload = JSON.stringify({
           transaction,
@@ -372,15 +463,23 @@ export class PosSalesManager {
           status: "PENDING",
           last_error: null
         };
-        if (input._faultSeam === "before_outbox") throw new Error("Fault: before_outbox");
+        if (_faultSeam === "before_outbox") throw new Error("Fault: before_outbox");
         await this.db.table("outbox").add(outboxRecord);
 
         return { transaction_id: transactionId };
       }
-    ).catch(err => {
+    ).catch(async err => {
       // Catch native Dexie constraint errors and wrap if needed
       if (err.name === 'ConstraintError') {
-        throw new CompleteSaleError("Command ID reused with different payload", IDEMPOTENCY_KEY_REUSE_ERROR);
+         const existingOutbox = await this.db.table("outbox").where({ command_id }).first();
+         if (existingOutbox) {
+           if (existingOutbox.request_fingerprint === requestFingerprint) {
+             const existingTx = await this.db.table("transactions").where({ command_id }).first();
+             return { transaction_id: existingTx.transaction_id };
+           } else {
+             throw new CompleteSaleError("Command ID reused with different payload", IDEMPOTENCY_KEY_REUSE_ERROR);
+           }
+         }
       }
       throw err;
     });
