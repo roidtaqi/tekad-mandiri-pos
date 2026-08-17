@@ -159,7 +159,7 @@ describeWithPostgres("POS pricing projection integration", () => {
 
     const runWithSinglePrice = async (/** @type {any} */ status, /** @type {any} */ from, /** @type {any} */ to, /** @type {any} */ tier, /** @type {any} */ minQty) => {
       const pIdF = crypto.randomUUID();
-      await client.query(`INSERT INTO catalog.products (id, business_id, category_id, sku, name, base_unit_code, track_inventory, status) VALUES ($1, $2, $3, $1, 'Product F', 'PCS', false, 'ACTIVE')`, [pIdF, bId, cId]);
+      await client.query(`INSERT INTO catalog.products (id, business_id, category_id, sku, name, base_unit_code, track_inventory, status) VALUES ($1, $2, $3, $4, 'Product F', 'PCS', false, 'ACTIVE')`, [pIdF, bId, cId, pIdF]);
 
       const puId = crypto.randomUUID();
       await client.query(`INSERT INTO catalog.product_units (id, business_id, product_id, unit_code, display_name, conversion_factor, can_sell, can_purchase, allow_decimal_qty, status) VALUES ($1, $2, $3, 'PCS', 'Pieces F', 1, true, true, false, 'ACTIVE')`, [puId, bId, pIdF]);
