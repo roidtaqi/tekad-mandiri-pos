@@ -1,0 +1,100 @@
+/* packages/ui/src/receipt.css */
+
+.kastur-receipt {
+  background-color: white;
+  color: black;
+  font-family: monospace;
+  margin: 0 auto;
+  padding: 10mm;
+}
+
+.kastur-receipt-58 {
+  width: 58mm;
+  font-size: 10px;
+}
+
+.kastur-receipt-80 {
+  width: 80mm;
+  font-size: 12px;
+}
+
+/* Ensure it prints correctly */
+@media print {
+  .kastur-receipt {
+    padding: 0;
+    margin: 0;
+  }
+}
+
+.kastur-receipt-header {
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+.kastur-receipt-title {
+  font-weight: bold;
+  font-size: 1.25em;
+  margin: 0 0 4px 0;
+}
+
+.kastur-receipt-address,
+.kastur-receipt-phone {
+  margin: 0 0 2px 0;
+}
+
+.kastur-receipt-divider {
+  border-bottom: 1px dashed #666;
+  margin: 8px 0;
+}
+
+.kastur-receipt-info {
+  margin-bottom: 8px;
+}
+
+.kastur-receipt-info-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.kastur-receipt-items {
+  margin-bottom: 8px;
+}
+
+.kastur-receipt-item {
+  margin-bottom: 6px;
+}
+
+.kastur-receipt-item-name {
+  font-weight: bold;
+}
+
+.kastur-receipt-item-row {
+  display: flex;
+  justify-content: space-between;
+}
+
+.kastur-receipt-totals {
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.kastur-receipt-totals-row {
+  display: flex;
+  justify-content: space-between;
+}
+
+.kastur-receipt-total-bold {
+  font-weight: bold;
+  font-size: 1.1em;
+  margin-top: 4px;
+  margin-bottom: 4px;
+}
+
+.kastur-receipt-footer {
+  text-align: center;
+  margin-top: 16px;
+}

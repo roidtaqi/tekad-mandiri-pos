@@ -107,3 +107,5 @@ export type {
   TextTone,
   TextWeight,
 } from "./typography";
+export { ReceiptDocument } from "./receipt";
+export type { ReceiptProps } from "./receipt";
