@@ -11,7 +11,7 @@ import { PosShiftCache } from "./shift-cache.js";
 import { PosProductLookup } from "./product-lookup.js";
 
 export const POS_LOCAL_DATABASE_NAME = "kastur-pos";
-export const POS_LOCAL_DATABASE_SCHEMA_VERSION = 5;
+export const POS_LOCAL_DATABASE_SCHEMA_VERSION = 4;
 
 const posSchemaVersions: LocalSchemaVersion[] = [
   // Released V1 declarations are immutable. Append V2; never rewrite V1.
@@ -42,13 +42,6 @@ const posSchemaVersions: LocalSchemaVersion[] = [
         "&shift_id, &active_context_key, business_id, status, sync_status, opened_at",
     },
     version: 4,
-  },
-  {
-    stores: {
-      published_retail_prices:
-        "&price_version_id, business_id, product_unit_id, [business_id+product_unit_id], effective_from",
-    },
-    version: 5,
   },
 ];
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useCallback } from "react";
 
 export type ScannerCaptureResult<T> =
   | { type: "SUCCESS"; barcode: string; payload: T }
@@ -43,7 +43,34 @@ export function useScannerCapture<T>({
 }: UseScannerCaptureOptions<T>) {
   const buffer = useRef("");
   const lastKeyTime = useRef(0);
+  const queue = useRef<string[]>([]);
   const isProcessing = useRef(false);
+
+  const onLookupRef = useRef(onLookup);
+  const onResultRef = useRef(onResult);
+
+  useEffect(() => {
+    onLookupRef.current = onLookup;
+    onResultRef.current = onResult;
+  }, [onLookup, onResult]);
+
+  const processQueue = useCallback(async () => {
+    if (isProcessing.current || queue.current.length === 0) return;
+    
+    isProcessing.current = true;
+    
+    while (queue.current.length > 0) {
+      const barcode = queue.current.shift()!;
+      try {
+        const payload = await onLookupRef.current(barcode);
+        onResultRef.current?.({ type: "SUCCESS", barcode, payload });
+      } catch (err: any) {
+        onResultRef.current?.({ type: "FAILURE", barcode, error: err.message ?? "Unknown error" });
+      }
+    }
+    
+    isProcessing.current = false;
+  }, []);
 
   useEffect(() => {
     if (!enabled) return;
@@ -72,23 +99,11 @@ export function useScannerCapture<T>({
         const barcode = buffer.current;
         buffer.current = "";
 
-        if (barcode && !isProcessing.current) {
+        if (barcode) {
           // Prevent default navigation/form submission side effects on terminator
           e.preventDefault(); 
-          
-          isProcessing.current = true;
-          
-          onLookup(barcode)
-            .then((payload) => {
-              onResult?.({ type: "SUCCESS", barcode, payload });
-            })
-            .catch((err: any) => {
-              onResult?.({ type: "FAILURE", barcode, error: err.message ?? "Unknown error" });
-            })
-            .finally(() => {
-              // Scanner becomes ready again
-              isProcessing.current = false;
-            });
+          queue.current.push(barcode);
+          processQueue();
         }
       } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
         // Collect printable characters
@@ -98,5 +113,5 @@ export function useScannerCapture<T>({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [enabled, onLookup, onResult, terminator, timeoutMs]);
+  }, [enabled, terminator, timeoutMs, processQueue]);
 }

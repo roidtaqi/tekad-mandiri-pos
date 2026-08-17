@@ -32,6 +32,7 @@ export class PosPricingCache {
       }
 
       const versionSet = new Set<string>();
+      const unitSet = new Set<string>();
 
       const toInsert: any[] = [];
       for (const price of prices) {
@@ -48,6 +49,11 @@ export class PosPricingCache {
           throw new PricingBootstrapError(`Duplicate price_version_id in snapshot: ${price.price_version_id}`);
         }
         versionSet.add(price.price_version_id);
+
+        if (unitSet.has(price.product_unit_id)) {
+          throw new PricingBootstrapError(`Duplicate product_unit_id in snapshot: ${price.product_unit_id}`);
+        }
+        unitSet.add(price.product_unit_id);
 
         try {
           parseMoney(price.unit_price);
@@ -96,33 +102,17 @@ export class PosPricingCache {
     return await this.db.table("pricing_bootstrap_state").get(businessId);
   }
 
-  async getPublishedRetailPrice(businessId: string, productUnitId: string, queryTime?: string): Promise<PosPublishedRetailPrice | null> {
+  async getPublishedRetailPrice(businessId: string, productUnitId: string): Promise<PosPublishedRetailPrice | null> {
     const table = this.db.table("published_retail_prices");
-    const records = await table.where("[business_id+product_unit_id]").equals([businessId, productUnitId]).toArray();
-    if (records.length === 0) return null;
-    
-    const timeToEvaluate = queryTime ? new Date(queryTime).getTime() : Date.now();
-    let effectiveRecord: any = null;
-    
-    for (const r of records) {
-      const from = new Date(r.effective_from).getTime();
-      const to = r.effective_to ? new Date(r.effective_to).getTime() : Infinity;
-      
-      if (timeToEvaluate >= from && timeToEvaluate < to) {
-        if (!effectiveRecord || from > new Date(effectiveRecord.effective_from).getTime()) {
-          effectiveRecord = r;
-        }
-      }
-    }
-    
-    if (!effectiveRecord) return null;
+    const record = await table.where("[business_id+product_unit_id]").equals([businessId, productUnitId]).first();
+    if (!record) return null;
     
     return {
-      price_version_id: effectiveRecord.price_version_id,
-      product_unit_id: effectiveRecord.product_unit_id,
-      unit_price: effectiveRecord.unit_price,
-      effective_from: effectiveRecord.effective_from,
-      effective_to: effectiveRecord.effective_to
+      price_version_id: record.price_version_id,
+      product_unit_id: record.product_unit_id,
+      unit_price: record.unit_price,
+      effective_from: record.effective_from,
+      effective_to: record.effective_to
     };
   }
 

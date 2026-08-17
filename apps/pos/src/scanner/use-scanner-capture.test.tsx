@@ -151,4 +151,122 @@ describe("useScannerCapture", () => {
 
     expect(onLookup).not.toHaveBeenCalled();
   });
+
+  it("processes a second scan correctly while the first is still pending (FIFO queue)", async () => {
+    let resolveFirst: (val: any) => void = () => {};
+    const firstPromise = new Promise((resolve) => {
+      resolveFirst = resolve;
+    });
+
+    const onLookup = vi.fn().mockImplementation((barcode: string) => {
+      if (barcode === "111") {
+        return firstPromise;
+      }
+      if (barcode === "222") {
+        return Promise.resolve({ name: "Product Two" });
+      }
+      return Promise.resolve(true);
+    });
+    
+    const onResult = vi.fn();
+
+    renderHook(() =>
+      useScannerCapture({
+        onLookup,
+        onResult,
+      })
+    );
+
+    act(() => {
+      triggerKey("1");
+      triggerKey("1");
+      triggerKey("1");
+      triggerKey("Enter");
+    });
+    
+    expect(onLookup).toHaveBeenCalledWith("111");
+    expect(onResult).not.toHaveBeenCalled();
+
+    act(() => {
+      triggerKey("2");
+      triggerKey("2");
+      triggerKey("2");
+      triggerKey("Enter");
+    });
+
+    // 222 shouldn't be processed yet because 111 is pending
+    expect(onLookup).not.toHaveBeenCalledWith("222");
+
+    await act(async () => {
+      resolveFirst({ name: "Product One" });
+      await vi.waitFor(() => {
+        expect(onResult).toHaveBeenCalledTimes(2);
+      });
+    });
+
+    expect(onLookup).toHaveBeenCalledWith("222");
+    
+    expect(onResult).toHaveBeenNthCalledWith(1, {
+      type: "SUCCESS",
+      barcode: "111",
+      payload: { name: "Product One" },
+    });
+    expect(onResult).toHaveBeenNthCalledWith(2, {
+      type: "SUCCESS",
+      barcode: "222",
+      payload: { name: "Product Two" },
+    });
+  });
+
+  it("processes a second scan correctly if the first one rejects", async () => {
+    let rejectFirst: (err: any) => void = () => {};
+    const firstPromise = new Promise((_, reject) => {
+      rejectFirst = reject;
+    });
+
+    const onLookup = vi.fn().mockImplementation((barcode: string) => {
+      if (barcode === "111") {
+        return firstPromise;
+      }
+      if (barcode === "222") {
+        return Promise.resolve({ name: "Product Two" });
+      }
+      return Promise.resolve(true);
+    });
+    
+    const onResult = vi.fn();
+
+    renderHook(() =>
+      useScannerCapture({
+        onLookup,
+        onResult,
+      })
+    );
+
+    act(() => {
+      triggerKey("1"); triggerKey("1"); triggerKey("1"); triggerKey("Enter");
+    });
+
+    act(() => {
+      triggerKey("2"); triggerKey("2"); triggerKey("2"); triggerKey("Enter");
+    });
+
+    await act(async () => {
+      rejectFirst(new Error("Fail 1"));
+      await vi.waitFor(() => {
+        expect(onResult).toHaveBeenCalledTimes(2);
+      });
+    });
+
+    expect(onResult).toHaveBeenNthCalledWith(1, {
+      type: "FAILURE",
+      barcode: "111",
+      error: "Fail 1",
+    });
+    expect(onResult).toHaveBeenNthCalledWith(2, {
+      type: "SUCCESS",
+      barcode: "222",
+      payload: { name: "Product Two" },
+    });
+  });
 });
