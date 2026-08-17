@@ -112,18 +112,26 @@ versionchange connection release, and reliable cleanup.
 
 Run it from the repository root with `npm run test:local-db`.
 
-## Catalog Cache Strategy
+## Cache Strategy
 
-The POS catalog cache is a server/cloud authoritative master projection.
+Both Catalog (V2) and Pricing (V3) caches are server/cloud authoritative master projections.
 The following constraints apply:
-- **Only initial add-only bootstrap exists.**
-- **Repeated same-Business bootstrap is rejected.**
-- **No destructive clear+bulkPut is used.**
-- **No raw Dexie public access is exposed.**
-- **No sync cursor, outbox, or change feed is implemented.**
+- **PostgreSQL authoritative**: Local caches are read-only projections.
+- **Focused initial bootstrap only**: Currently only initial add-only bootstrap exists.
+- **Exact raw unit_price string retained**: To prevent IEEE 754 precision loss.
+- **Repeat same-Business bootstrap is rejected**.
+- **Multiple Business caches coexist**.
+- **No destructive clear+bulkPut / snapshot overwrite**.
+- **No sync cursor, change feed, or outbox**.
+- **No scheduled local activation**.
+- **No raw Dexie public access is exposed**.
 
-Full bootstrap and rebootstrap logic remains scheduled for M3.
+M3 owns real Sync (cursors, change feeds, outboxes). M7 owns full Pricing governance, scheduling, and offline resolvers.
 
-## Explicitly deferred
+## POS Schema History
 
-Currently, POS defines the `products`, `product_units`, `barcodes`, and `catalog_bootstrap_state` stores. Business, identity, pricing, inventory, purchasing, sales, shift/cash, returns, customer, outbox, cursor, failure-queue, and change-feed stores are deferred to their authorized vertical slices. This package also contains no generic repository, CRUD engine, snapshot replacement, or synchronization workflow.
+- **POS V1**: Empty schema establishing lifecycle.
+- **POS V2**: Defines `products`, `product_units`, `barcodes`, and `catalog_bootstrap_state`.
+- **POS V3**: Defines `published_retail_prices` and `pricing_bootstrap_state`.
+
+Business, identity, inventory, purchasing, sales, shift/cash, returns, customer, outbox, cursor, failure-queue, and change-feed stores are deferred to their authorized vertical slices. This package also contains no generic repository, CRUD engine, or synchronization workflow.

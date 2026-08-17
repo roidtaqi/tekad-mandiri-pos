@@ -34,8 +34,14 @@ export class PosPricingCache {
 
       const toInsert: any[] = [];
       for (const price of prices) {
-        if (!price.price_version_id || !price.product_unit_id) {
-          throw new PricingBootstrapError("Invalid price row: missing ID");
+        if (typeof price.price_version_id !== "string" || !price.price_version_id) {
+          throw new PricingBootstrapError("Invalid price row: missing or invalid price_version_id");
+        }
+        if (typeof price.product_unit_id !== "string" || !price.product_unit_id) {
+          throw new PricingBootstrapError("Invalid price row: missing or invalid product_unit_id");
+        }
+        if (typeof price.unit_price !== "string") {
+          throw new PricingBootstrapError("Invalid price row: unit_price must be a string");
         }
         if (versionSet.has(price.price_version_id)) {
           throw new PricingBootstrapError(`Duplicate price_version_id in snapshot: ${price.price_version_id}`);
@@ -52,10 +58,10 @@ export class PosPricingCache {
           throw new PricingBootstrapError(`Invalid unit_price for ${price.price_version_id}`);
         }
 
-        if (!price.effective_from || isNaN(new Date(price.effective_from).getTime())) {
+        if (typeof price.effective_from !== "string" || isNaN(new Date(price.effective_from).getTime())) {
           throw new PricingBootstrapError(`Invalid effective_from for ${price.price_version_id}`);
         }
-        if (price.effective_to !== null && isNaN(new Date(price.effective_to).getTime())) {
+        if (price.effective_to !== null && (typeof price.effective_to !== "string" || isNaN(new Date(price.effective_to).getTime()))) {
           throw new PricingBootstrapError(`Invalid effective_to for ${price.price_version_id}`);
         }
         if (price.effective_to !== null && new Date(price.effective_to).getTime() <= new Date(price.effective_from).getTime()) {

@@ -17,6 +17,10 @@ export function resolvePublishedRetailPrice(
     throw new PricingError("PUBLISHED_RETAIL_PRICE_NOT_AVAILABLE", `Published retail price not available for product unit: ${productUnitId}`);
   }
 
+  if (cachedPrice.product_unit_id !== productUnitId) {
+    throw new PricingError("PUBLISHED_RETAIL_PRICE_NOT_AVAILABLE", `Product unit mismatch: ${productUnitId}`);
+  }
+
   return {
     price_version_id: cachedPrice.price_version_id,
     product_unit_id: cachedPrice.product_unit_id,

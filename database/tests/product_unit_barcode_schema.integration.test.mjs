@@ -73,14 +73,15 @@ describeWithPostgres("M1-005: Product Unit and Barcode Schema", () => {
     const res = await client?.query(`SELECT filename FROM public.kastur_schema_migrations ORDER BY version ASC`);
     const filenames = res?.rows.map(r => r.filename) ?? [];
     
-    expect(filenames).toEqual([
+    const expectedPrefix = [
       "000001_create_core_businesses_locations.sql",
       "000002_create_identity_core_schema.sql",
       "000003_seed_permission_catalog_role_presets.sql",
       "000004_create_identity_devices_sessions_authorization_versions.sql",
       "000005_create_catalog_products_categories_brands.sql",
       "000006_create_product_units_barcodes.sql"
-    ]);
+    ];
+    expect(filenames.slice(0, expectedPrefix.length)).toEqual(expectedPrefix);
 
     const url = requireChildDatabaseUrl();
     const appliedAgain = await applyMigrations({ databaseUrl: url });
