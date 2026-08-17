@@ -24,6 +24,9 @@ export interface ProductLookupResult {
   readonly barcode: string | null;
   readonly unit_price: string;
   readonly price_effective_from: string;
+  readonly unit_code: string;
+  readonly allow_decimal_qty: boolean;
+  readonly price_version_id: string;
 }
 
 export class PosProductLookup {
@@ -98,6 +101,9 @@ export class PosProductLookup {
       barcode: reportedBarcode,
       unit_price: price.unit_price,
       price_effective_from: price.effective_from,
+      unit_code: unit.unit_code,
+      allow_decimal_qty: unit.allow_decimal_qty,
+      price_version_id: price.price_version_id,
     };
   }
 

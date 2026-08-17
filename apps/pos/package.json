@@ -11,6 +11,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit"
   },
   "dependencies": {
+    "@kastur/domain": "*",
+    "@kastur/local-db": "*",
     "@kastur/ui": "*",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
