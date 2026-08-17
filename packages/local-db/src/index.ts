@@ -24,3 +24,16 @@ export type {
 } from "./catalog-cache.js";
 export { PricingBootstrapError } from "./pricing-cache.js";
 export type { PosPricingCache } from "./pricing-cache.js";
+export {
+  ShiftOpenError,
+  SHIFT_OPEN_PERMISSION_DENIED,
+  SHIFT_AUTHORIZATION_EXPIRED,
+  INVALID_SHIFT_CONTEXT,
+  INVALID_OPENING_CASH,
+  ACTIVE_SHIFT_ALREADY_EXISTS,
+} from "./shift-cache.js";
+export type {
+  PosShiftCache,
+  LocalShiftRecord,
+  OpenShiftInput,
+} from "./shift-cache.js";

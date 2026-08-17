@@ -7,9 +7,10 @@ import {
 import { defineSchemaVersions } from "./schema-versions";
 import { PosCatalogCache } from "./catalog-cache.js";
 import { PosPricingCache } from "./pricing-cache.js";
+import { PosShiftCache } from "./shift-cache.js";
 
 export const POS_LOCAL_DATABASE_NAME = "kastur-pos";
-export const POS_LOCAL_DATABASE_SCHEMA_VERSION = 3;
+export const POS_LOCAL_DATABASE_SCHEMA_VERSION = 4;
 
 const posSchemaVersions = defineSchemaVersions(
   [
@@ -35,6 +36,13 @@ const posSchemaVersions = defineSchemaVersions(
       },
       version: 3,
     },
+    {
+      stores: {
+        shifts:
+          "&shift_id, &active_context_key, business_id, status, sync_status, opened_at",
+      },
+      version: 4,
+    },
   ],
   "pos local database",
 );
@@ -50,6 +58,7 @@ export interface PosLocalDatabase extends LocalDatabaseLifecycle {
   readonly application: "pos";
   readonly catalog: PosCatalogCache;
   readonly pricing: PosPricingCache;
+  readonly shifts: PosShiftCache;
 }
 
 
@@ -59,11 +68,13 @@ class PosLocalDatabaseImpl
 {
   readonly catalog: PosCatalogCache;
   readonly pricing: PosPricingCache;
+  readonly shifts: PosShiftCache;
 
   constructor(options: CreateLocalDatabaseOptions) {
     super(posLocalDatabaseDefinition, options);
     this.catalog = new PosCatalogCache(this._database);
     this.pricing = new PosPricingCache(this._database, this.catalog);
+    this.shifts = new PosShiftCache(this._database);
   }
 }
 

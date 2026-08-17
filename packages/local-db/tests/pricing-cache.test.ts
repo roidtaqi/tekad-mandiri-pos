@@ -32,8 +32,8 @@ const mockCatalog = async (businessId: string, pId: string, puId: string) => {
   });
 };
 
-test("POS current schema is V3, pricing bootstrap applies successfully and preserves raw decimal string", async () => {
-  expect((db as any)._database.verno).toBe(3);
+test("POS current schema is V4, pricing bootstrap applies successfully and preserves raw decimal string", async () => {
+  expect((db as any)._database.verno).toBe(4);
   
   const businessId = "b1";
   await mockCatalog(businessId, "p1", "pu1");

@@ -11,7 +11,7 @@ applications share an origin:
 
 | Application | Stable IndexedDB name | Current schema version |
 | --- | --- | ---: |
-| POS | `kastur-pos` | 3 |
+| POS | `kastur-pos` | 4 |
 | Back Office | `kastur-backoffice` | 1 |
 
 Database names do not contain Business, Location, User, or other domain IDs.
@@ -133,5 +133,21 @@ M3 owns real Sync (cursors, change feeds, outboxes). M7 owns full Pricing govern
 - **POS V1**: Empty schema establishing lifecycle.
 - **POS V2**: Defines `products`, `product_units`, `barcodes`, and `catalog_bootstrap_state`.
 - **POS V3**: Defines `published_retail_prices` and `pricing_bootstrap_state`.
+- **POS V4**: Defines `shifts` with `&shift_id`, `&active_context_key`, and indexes for `business_id`, `status`, `sync_status`, `opened_at`.
 
-Business, identity, inventory, purchasing, sales, shift/cash, returns, customer, outbox, cursor, failure-queue, and change-feed stores are deferred to their authorized vertical slices. This package also contains no generic repository, CRUD engine, or synchronization workflow.
+## Shift Cache (V4)
+
+The Shift cache is a **locally created offline business fact**, not a server-authoritative projection.
+
+The following constraints apply:
+- **Offline-safe**: Shift Open commits locally without network.
+- **OPEN business status + PENDING sync status**: Status separation is enforced.
+- **Cached authorization validated**: `workspace.pos.access` + `shift.open` required; expired authorization rejected.
+- **opening_cash is raw decimal string**: Validated via `@kastur/numeric`, persisted lexically.
+- **One OPEN shift per operational context**: Enforced by `&active_context_key` unique index.
+- **collision-resistant shift_id**: `crypto.randomUUID()`; `shift_number` is display only.
+- **No PostgreSQL migration**: Cloud `cash.shifts` belongs to M4.
+- **No cash ledger / close / outbox**: M4 and M2-007 own those.
+- **No raw Dexie public access is exposed**.
+
+Business, identity, inventory, purchasing, sales, returns, customer, outbox, cursor, failure-queue, and change-feed stores are deferred to their authorized vertical slices. This package also contains no generic repository, CRUD engine, or synchronization workflow.

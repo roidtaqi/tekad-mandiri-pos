@@ -32,12 +32,18 @@ afterEach(async () => {
 describe("public local database API", () => {
   it("exposes only the intentional runtime entry points", () => {
     expect(Object.keys(LocalDatabase).sort()).toEqual([
+      "ACTIVE_SHIFT_ALREADY_EXISTS",
       "BACK_OFFICE_LOCAL_DATABASE_NAME",
       "BACK_OFFICE_LOCAL_DATABASE_SCHEMA_VERSION",
       "CATALOG_ALREADY_BOOTSTRAPPED",
+      "INVALID_OPENING_CASH",
+      "INVALID_SHIFT_CONTEXT",
       "POS_LOCAL_DATABASE_NAME",
       "POS_LOCAL_DATABASE_SCHEMA_VERSION",
       "PricingBootstrapError",
+      "SHIFT_AUTHORIZATION_EXPIRED",
+      "SHIFT_OPEN_PERMISSION_DENIED",
+      "ShiftOpenError",
       "createBackOfficeLocalDatabase",
       "createPosLocalDatabase",
     ]);
@@ -53,7 +59,7 @@ describe("public local database API", () => {
     expect(POS_LOCAL_DATABASE_NAME).not.toBe(
       BACK_OFFICE_LOCAL_DATABASE_NAME,
     );
-    expect(POS_LOCAL_DATABASE_SCHEMA_VERSION).toBe(3);
+    expect(POS_LOCAL_DATABASE_SCHEMA_VERSION).toBe(4);
     expect(BACK_OFFICE_LOCAL_DATABASE_SCHEMA_VERSION).toBe(1);
 
     const pos = createPosLocalDatabase();
@@ -98,12 +104,11 @@ describe("current production definitions", () => {
     expect(definition.schemaVersions[0]?.stores).toEqual({});
 
     if (definition.application === "pos") {
-      expect(definition.currentSchemaVersion).toBe(3);
-      expect(definition.schemaVersions).toHaveLength(3);
-      expect(definition.schemaVersions[2]?.version).toBe(3);
-      expect(Object.keys(definition.schemaVersions[2]?.stores ?? {}).sort()).toEqual([
-        "pricing_bootstrap_state",
-        "published_retail_prices",
+      expect(definition.currentSchemaVersion).toBe(4);
+      expect(definition.schemaVersions).toHaveLength(4);
+      expect(definition.schemaVersions[3]?.version).toBe(4);
+      expect(Object.keys(definition.schemaVersions[3]?.stores ?? {}).sort()).toEqual([
+        "shifts",
       ]);
     } else {
       expect(definition.currentSchemaVersion).toBe(1);
@@ -132,6 +137,7 @@ describe("current production definitions", () => {
         "product_units",
         "products",
         "published_retail_prices",
+        "shifts",
       ]);
     } else {
       expect(objectStoreNames).toEqual([]);
@@ -167,7 +173,7 @@ describe("current production definitions", () => {
       }),
     );
     await dbV2.open();
-    expect(dbV2.schemaVersion).toBe(3);
+    expect(dbV2.schemaVersion).toBe(4);
     dbV2.close();
   });
 
