@@ -42,7 +42,8 @@ export class PosProductLookup {
     businessId: string,
     product: LocalPosProduct,
     explicitUnitId?: string,
-    explicitBarcode?: string
+    explicitBarcode?: string,
+    serverTime?: string
   ): Promise<ProductLookupResult> {
     if (product.status !== "ACTIVE") {
       throw new ProductLookupError("Product is not active", PRODUCT_NOT_FOUND);
@@ -69,7 +70,7 @@ export class PosProductLookup {
 
     const unit = units[0]!;
 
-    const price = await this.pricing.getPublishedRetailPrice(businessId, unit.id);
+    const price = await this.pricing.getPublishedRetailPrice(businessId, unit.id, serverTime);
     if (!price) {
       throw new ProductLookupError("No published retail price available", NO_PUBLISHED_PRICE);
     }
@@ -101,9 +102,9 @@ export class PosProductLookup {
     };
   }
 
-  async findByBarcode(businessId: string, barcode: string): Promise<ProductLookupResult> {
+  async findByBarcode(businessId: string, barcode: string, serverTime?: string): Promise<ProductLookupResult> {
     this.validateInput(barcode);
-    const exactBarcode = barcode.trim();
+    const exactBarcode = barcode;
 
     const barcodeRecords = await this.db.table<LocalPosBarcode>("barcodes")
       .where("[business_id+barcode]")
@@ -130,12 +131,12 @@ export class PosProductLookup {
       throw new ProductLookupError("Product not found", PRODUCT_NOT_FOUND);
     }
 
-    return this.resolveSellableUnit(businessId, product, unit.id, exactBarcode);
+    return this.resolveSellableUnit(businessId, product, unit.id, exactBarcode, serverTime);
   }
 
-  async findBySku(businessId: string, sku: string): Promise<ProductLookupResult> {
+  async findBySku(businessId: string, sku: string, serverTime?: string): Promise<ProductLookupResult> {
     this.validateInput(sku);
-    const exactSku = sku.trim();
+    const exactSku = sku;
 
     const productRecords = await this.db.table<LocalPosProduct>("products")
       .where("[business_id+sku]")
@@ -151,10 +152,10 @@ export class PosProductLookup {
       throw new ProductLookupError("Ambiguous SKU", AMBIGUOUS_IDENTIFIER);
     }
 
-    return this.resolveSellableUnit(businessId, activeProducts[0]!);
+    return this.resolveSellableUnit(businessId, activeProducts[0]!, undefined, undefined, serverTime);
   }
 
-  async searchProducts(businessId: string, query: string): Promise<ProductLookupResult[]> {
+  async searchProducts(businessId: string, query: string, serverTime?: string): Promise<ProductLookupResult[]> {
     this.validateInput(query);
     const q = query.trim().toLowerCase();
 
@@ -197,7 +198,7 @@ export class PosProductLookup {
       for (const u of units) {
         if (!seenUnitIds.has(u.id)) {
           try {
-            const res = await this.resolveSellableUnit(businessId, p, u.id);
+            const res = await this.resolveSellableUnit(businessId, p, u.id, undefined, serverTime);
             results.push(res);
             seenUnitIds.add(u.id);
           } catch {
@@ -214,7 +215,7 @@ export class PosProductLookup {
           const p = await this.db.table<LocalPosProduct>("products").get(u.product_id);
           if (p && p.status === "ACTIVE") {
             try {
-              const res = await this.resolveSellableUnit(businessId, p, u.id, b.barcode);
+              const res = await this.resolveSellableUnit(businessId, p, u.id, b.barcode, serverTime);
               results.push(res);
               seenUnitIds.add(u.id);
             } catch {

@@ -64,7 +64,7 @@ describe("public local database API", () => {
     expect(POS_LOCAL_DATABASE_NAME).not.toBe(
       BACK_OFFICE_LOCAL_DATABASE_NAME,
     );
-    expect(POS_LOCAL_DATABASE_SCHEMA_VERSION).toBe(4);
+    expect(POS_LOCAL_DATABASE_SCHEMA_VERSION).toBe(5);
     expect(BACK_OFFICE_LOCAL_DATABASE_SCHEMA_VERSION).toBe(1);
 
     const pos = createPosLocalDatabase();
@@ -109,11 +109,11 @@ describe("current production definitions", () => {
     expect(definition.schemaVersions[0]?.stores).toEqual({});
 
     if (definition.application === "pos") {
-      expect(definition.currentSchemaVersion).toBe(4);
-      expect(definition.schemaVersions).toHaveLength(4);
-      expect(definition.schemaVersions[3]?.version).toBe(4);
-      expect(Object.keys(definition.schemaVersions[3]?.stores ?? {}).sort()).toEqual([
-        "shifts",
+      expect(definition.currentSchemaVersion).toBe(5);
+      expect(definition.schemaVersions).toHaveLength(5);
+      expect(definition.schemaVersions[4]?.version).toBe(5);
+      expect(Object.keys(definition.schemaVersions[4]?.stores ?? {}).sort()).toEqual([
+        "published_retail_prices",
       ]);
     } else {
       expect(definition.currentSchemaVersion).toBe(1);
@@ -178,7 +178,7 @@ describe("current production definitions", () => {
       }),
     );
     await dbV2.open();
-    expect(dbV2.schemaVersion).toBe(4);
+    expect(dbV2.schemaVersion).toBe(5);
     dbV2.close();
   });
 

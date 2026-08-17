@@ -4,47 +4,56 @@ import {
   type CreateLocalDatabaseOptions,
   type LocalDatabaseLifecycle,
 } from "./local-database";
-import { defineSchemaVersions } from "./schema-versions";
+import { defineSchemaVersions, type LocalSchemaVersion } from "./schema-versions";
 import { PosCatalogCache } from "./catalog-cache.js";
 import { PosPricingCache } from "./pricing-cache.js";
 import { PosShiftCache } from "./shift-cache.js";
 import { PosProductLookup } from "./product-lookup.js";
 
 export const POS_LOCAL_DATABASE_NAME = "kastur-pos";
-export const POS_LOCAL_DATABASE_SCHEMA_VERSION = 4;
+export const POS_LOCAL_DATABASE_SCHEMA_VERSION = 5;
 
-const posSchemaVersions = defineSchemaVersions(
-  [
-    // Released V1 declarations are immutable. Append V2; never rewrite V1.
-    { stores: {}, version: 1 },
-    {
-      stores: {
-        products:
-          "&id, business_id, sku, name, status, &[business_id+sku], [business_id+status]",
-        product_units:
-          "&id, business_id, product_id, unit_code, status, &[product_id+unit_code], [business_id+product_id], [business_id+status]",
-        barcodes:
-          "&id, business_id, product_unit_id, barcode, status, [business_id+barcode], [business_id+product_unit_id], [business_id+status]",
-        catalog_bootstrap_state: "&business_id, bootstrap_version, server_time",
-      },
-      version: 2,
+const posSchemaVersions: LocalSchemaVersion[] = [
+  // Released V1 declarations are immutable. Append V2; never rewrite V1.
+  { stores: {}, version: 1 },
+  {
+    stores: {
+      products:
+        "&id, business_id, sku, name, status, &[business_id+sku], [business_id+status]",
+      product_units:
+        "&id, business_id, product_id, unit_code, status, &[product_id+unit_code], [business_id+product_id], [business_id+status]",
+      barcodes:
+        "&id, business_id, product_unit_id, barcode, status, [business_id+barcode], [business_id+product_unit_id], [business_id+status]",
+      catalog_bootstrap_state: "&business_id, bootstrap_version, server_time",
     },
-    {
-      stores: {
-        published_retail_prices:
-          "&price_version_id, business_id, product_unit_id, &[business_id+product_unit_id], effective_from",
-        pricing_bootstrap_state: "&business_id, bootstrap_version, server_time",
-      },
-      version: 3,
+    version: 2,
+  },
+  {
+    stores: {
+      published_retail_prices:
+        "&price_version_id, business_id, product_unit_id, &[business_id+product_unit_id], effective_from",
+      pricing_bootstrap_state: "&business_id, bootstrap_version, server_time",
     },
-    {
-      stores: {
-        shifts:
-          "&shift_id, &active_context_key, business_id, status, sync_status, opened_at",
-      },
-      version: 4,
+    version: 3,
+  },
+  {
+    stores: {
+      shifts:
+        "&shift_id, &active_context_key, business_id, status, sync_status, opened_at",
     },
-  ],
+    version: 4,
+  },
+  {
+    stores: {
+      published_retail_prices:
+        "&price_version_id, business_id, product_unit_id, [business_id+product_unit_id], effective_from",
+    },
+    version: 5,
+  },
+];
+
+const posSchemaDeclarations = defineSchemaVersions(
+  posSchemaVersions,
   "pos local database",
 );
 
@@ -52,7 +61,7 @@ export const posLocalDatabaseDefinition = defineLocalDatabase({
   application: "pos",
   currentSchemaVersion: POS_LOCAL_DATABASE_SCHEMA_VERSION,
   name: POS_LOCAL_DATABASE_NAME,
-  schemaVersions: posSchemaVersions,
+  schemaVersions: posSchemaDeclarations,
 });
 
 export interface PosLocalDatabase extends LocalDatabaseLifecycle {
