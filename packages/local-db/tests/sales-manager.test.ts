@@ -112,7 +112,7 @@ describe("PosSalesManager", () => {
     }
 
     it("AUTH-07 OWNER label with missing permissions rejects", async () => {
-      auth.user.primary_role = "OWNER";
+      auth.primary_role = "OWNER";
       auth.permissions = [];
       await expect(db.sales.completeSale({
         auth, device_id: "d1", command_id: "cmd-p7", occurred_at: "2026-08-17T01:00:00Z", cart, amount_tendered: "200.0000"

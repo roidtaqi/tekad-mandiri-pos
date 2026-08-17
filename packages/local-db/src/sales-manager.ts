@@ -96,7 +96,7 @@ export interface LocalCompletedTransaction {
   readonly grand_total: string;
   readonly total_paid: string;
   readonly change_amount: string;
-  readonly cost_status: "COST_PENDING" | null;
+  readonly cost_status: "COST_PENDING";
   readonly created_by: string;
   readonly authorization_version: number;
   readonly occurred_at: string;
