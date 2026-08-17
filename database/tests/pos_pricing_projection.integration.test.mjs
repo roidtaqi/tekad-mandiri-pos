@@ -116,7 +116,7 @@ describeWithPostgres("POS pricing projection integration", () => {
       user_id: "u1",
       permissions: new Set(["pricing.read"])
     };
-    await expect(buildPosPublishedRetailPriceBootstrapProjection(ctxNoAccess, executor, serverTime)).rejects.toThrow("PRICING_PERMISSION_DENIED");
+    await expect(buildPosPublishedRetailPriceBootstrapProjection(ctxNoAccess, executor, serverTime)).rejects.toMatchObject({ code: "PRICING_PERMISSION_DENIED" });
 
     /** @type {any} */
     const ctxOwner = {
@@ -124,7 +124,7 @@ describeWithPostgres("POS pricing projection integration", () => {
       primary_role: "OWNER",
       permissions: new Set([])
     };
-    await expect(buildPosPublishedRetailPriceBootstrapProjection(ctxOwner, executor, serverTime)).rejects.toThrow();
+    await expect(buildPosPublishedRetailPriceBootstrapProjection(ctxOwner, executor, serverTime)).rejects.toMatchObject({ code: "PRICING_PERMISSION_DENIED" });
 
     const pvActiveB = crypto.randomUUID();
     await client.query(`INSERT INTO pricing.price_versions (id, business_id, product_unit_id, status, effective_from) VALUES ($1, $2, $3, 'ACTIVE', '2030-01-01T00:00:00Z')`, [pvActiveB, bIdB, puIdB]);
@@ -147,11 +147,8 @@ describeWithPostgres("POS pricing projection integration", () => {
     const serverTime = '2030-01-01T12:00:00Z';
     const bId = crypto.randomUUID();
     const cId = crypto.randomUUID();
-    const pId = crypto.randomUUID();
-
     await client.query(`INSERT INTO core.businesses (id, name, currency_code, timezone, status) VALUES ($1, 'Business Filter', 'IDR', 'Asia/Jakarta', 'ACTIVE')`, [bId]);
     await client.query(`INSERT INTO catalog.categories (id, business_id, name, status) VALUES ($1, $2, 'Category F', 'ACTIVE')`, [cId, bId]);
-    await client.query(`INSERT INTO catalog.products (id, business_id, category_id, sku, name, base_unit_code, track_inventory, status) VALUES ($1, $2, $3, 'SKUF', 'Product F', 'PCS', false, 'ACTIVE')`, [pId, bId, cId]);
 
     /** @type {import("../../packages/domain/src/core/context.js").ActorContext} */
     const ctx = {
@@ -161,8 +158,11 @@ describeWithPostgres("POS pricing projection integration", () => {
     };
 
     const runWithSinglePrice = async (/** @type {any} */ status, /** @type {any} */ from, /** @type {any} */ to, /** @type {any} */ tier, /** @type {any} */ minQty) => {
+      const pIdF = crypto.randomUUID();
+      await client.query(`INSERT INTO catalog.products (id, business_id, category_id, sku, name, base_unit_code, track_inventory, status) VALUES ($1, $2, $3, $1, 'Product F', 'PCS', false, 'ACTIVE')`, [pIdF, bId, cId]);
+
       const puId = crypto.randomUUID();
-      await client.query(`INSERT INTO catalog.product_units (id, business_id, product_id, unit_code, display_name, conversion_factor, can_sell, can_purchase, allow_decimal_qty, status) VALUES ($1, $2, $3, 'PCS', 'Pieces F', 1, true, true, false, 'ACTIVE')`, [puId, bId, pId]);
+      await client.query(`INSERT INTO catalog.product_units (id, business_id, product_id, unit_code, display_name, conversion_factor, can_sell, can_purchase, allow_decimal_qty, status) VALUES ($1, $2, $3, 'PCS', 'Pieces F', 1, true, true, false, 'ACTIVE')`, [puId, bId, pIdF]);
       
       const pvId = crypto.randomUUID();
       await client.query(`INSERT INTO pricing.price_versions (id, business_id, product_unit_id, status, effective_from, effective_to) VALUES ($1, $2, $3, $4, $5, $6)`, [pvId, bId, puId, status, from, to]);
