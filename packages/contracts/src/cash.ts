@@ -85,3 +85,18 @@ export interface CompleteShiftClosingCommand {
   readonly actual_cash: string;
   readonly variance_reason: string | null;
 }
+
+export interface CashReconciliationDTO {
+  readonly id: string;
+  readonly shift_id: string;
+  readonly business_id: string;
+  readonly location_id: string;
+  readonly late_movement_id: string;
+  readonly late_movement_type: CashMovementType;
+  readonly late_amount: string;
+  readonly new_expected_cash: string;
+  readonly adjusted_variance: string;
+  readonly adjusted_variance_type: CashVarianceType;
+  readonly reconciliation_notes: string | null;
+  readonly created_at: string;
+}

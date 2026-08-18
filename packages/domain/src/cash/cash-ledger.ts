@@ -97,3 +97,41 @@ export function calculateShiftClosing(movements: ReadonlyArray<CashMovementDTO>,
     cash_refunds: refunds,
   };
 }
+
+export interface LateEventReconciliationResult {
+  readonly new_expected_cash: MoneyValue;
+  readonly adjusted_variance: MoneyValue;
+  readonly adjusted_variance_type: CashVarianceType;
+}
+
+export function calculateLateEventReconciliation(
+  originalExpectedCash: MoneyValue,
+  actualCash: MoneyValue,
+  lateMovement: CashMovementDTO,
+): LateEventReconciliationResult {
+  const amount = parseMoney(lateMovement.amount);
+  const direction = lateMovement.direction;
+
+  let newExpectedCash = originalExpectedCash;
+  if (direction === "IN") {
+    newExpectedCash = moneyAdd(newExpectedCash, amount);
+  } else {
+    newExpectedCash = moneySubtract(newExpectedCash, amount);
+  }
+
+  const newVariance = moneySubtract(actualCash, newExpectedCash);
+  let newVarianceType: CashVarianceType = "MATCHED";
+
+  const compZero = moneyCompare(newVariance, parseMoney("0"));
+  if (compZero === -1) {
+    newVarianceType = "SHORT";
+  } else if (compZero === 1) {
+    newVarianceType = "OVER";
+  }
+
+  return {
+    new_expected_cash: newExpectedCash,
+    adjusted_variance: newVariance,
+    adjusted_variance_type: newVarianceType,
+  };
+}
