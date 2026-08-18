@@ -51,7 +51,7 @@ describeWithPostgres("M12: Legacy ID Map", () => {
     const pushOutput = (/** @type {string} */ line) => output.push(line);
     const result = await applyMigrations({
       databaseUrl: childDatabaseUrl,
-      silent: true,
+      
       writeStdout: pushOutput,
       writeStderr: pushOutput,
     });

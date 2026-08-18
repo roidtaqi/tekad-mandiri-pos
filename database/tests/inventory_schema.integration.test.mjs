@@ -51,7 +51,7 @@ describeWithPostgres("M8: Inventory Schema", () => {
     const pushOutput = (/** @type {string} */ line) => output.push(line);
     const result = await applyMigrations({
       databaseUrl: childDatabaseUrl,
-      silent: true,
+      
       writeStdout: pushOutput,
       writeStderr: pushOutput,
     });

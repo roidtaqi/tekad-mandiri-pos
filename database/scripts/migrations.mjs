@@ -50,6 +50,9 @@ export const canonicalMigrationsDirectory = fileURLToPath(
  * @property {string} databaseUrl
  * @property {{info(message: string): void, warn?(message: string): void}} [logger]
  * @property {string} [migrationsDirectory]
+ * @property {boolean} [silent]
+ * @property {(line: string) => void} [writeStdout]
+ * @property {(line: string) => void} [writeStderr]
  */
 
 /**

@@ -51,7 +51,7 @@ describeWithPostgres("M11: Reporting Views", () => {
     const pushOutput = (/** @type {string} */ line) => output.push(line);
     const result = await applyMigrations({
       databaseUrl: childDatabaseUrl,
-      silent: true,
+      
       writeStdout: pushOutput,
       writeStderr: pushOutput,
     });

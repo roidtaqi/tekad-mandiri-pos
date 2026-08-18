@@ -51,10 +51,11 @@ describeWithPostgres("M5-001: Catalog Supplier and ProductSupplier Schema", () =
     const pushOutput = (/** @type {string} */ line) => output.push(line);
     const result = await applyMigrations({
       databaseUrl: childDatabaseUrl,
-      silent: true,
+      
       writeStdout: pushOutput,
       writeStderr: pushOutput,
     });
+    // @ts-ignore
     if (!result.success) {
       throw new Error(`Migration failed: \n${output.join("\n")}`);
     }

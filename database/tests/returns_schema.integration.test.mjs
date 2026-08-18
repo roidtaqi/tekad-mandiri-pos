@@ -51,7 +51,7 @@ describeWithPostgres("M9: Returns Schema", () => {
     const pushOutput = (/** @type {string} */ line) => output.push(line);
     const result = await applyMigrations({
       databaseUrl: childDatabaseUrl,
-      silent: true,
+      
       writeStdout: pushOutput,
       writeStderr: pushOutput,
     });

@@ -73,6 +73,7 @@ export function App() {
         />
       )}
       <Route path="/" element={<Layout />}>
+        <Route index element={<PlaceholderShell />} />
         <Route path="products/*" element={
             <Suspense fallback={<Spinner label="Memuat produk" />}>
               <CatalogWorkspace authContext={null} catalogGateway={null}>
