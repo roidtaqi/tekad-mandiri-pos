@@ -1,6 +1,15 @@
 import { ActorContext, SqlExecutor } from "../core/context.js";
 
-import { PricingError } from "@kastur/contracts";
+export class PricingGovernanceError extends Error {
+  constructor(
+    public readonly code: string,
+    message: string,
+    public readonly field?: string
+  ) {
+    super(message);
+    this.name = "PricingGovernanceError";
+  }
+}
 
 export interface ProposePriceSetRequest {
   readonly price_set_id: string;
@@ -18,7 +27,7 @@ export async function proposePriceSet(
   req: ProposePriceSetRequest
 ): Promise<ProposePriceSetResult> {
   if (!ctx.permissions.has("pricing.propose")) {
-    throw new PricingError("PERMISSION_DENIED", "Requires pricing.propose permission");
+    throw new PricingGovernanceError("PERMISSION_DENIED", "Requires pricing.propose permission");
   }
 
   try {
@@ -38,7 +47,7 @@ export async function proposePriceSet(
     };
   } catch (err: any) {
     if (err.code === "23505") {
-      throw new PricingError("VALIDATION_ERROR", "Price set already exists", "price_set_id");
+      throw new PricingGovernanceError("VALIDATION_ERROR", "Price set already exists", "price_set_id");
     }
     throw err;
   }
@@ -58,7 +67,7 @@ export async function approvePriceSet(
   req: ApprovePriceSetRequest
 ): Promise<ApprovePriceSetResult> {
   if (!ctx.permissions.has("pricing.approve")) {
-    throw new PricingError("PERMISSION_DENIED", "Requires pricing.approve permission");
+    throw new PricingGovernanceError("PERMISSION_DENIED", "Requires pricing.approve permission");
   }
 
   const res = await executor.query(
@@ -70,7 +79,7 @@ export async function approvePriceSet(
   );
 
   if (res.rowCount === 0) {
-    throw new PricingError("VALIDATION_ERROR", "Price set cannot be approved or not found");
+    throw new PricingGovernanceError("VALIDATION_ERROR", "Price set cannot be approved or not found");
   }
 
   return {

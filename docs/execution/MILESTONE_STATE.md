@@ -43,7 +43,8 @@
 | M6-001 | IMPLEMENTED_UNVERIFIED | - | - | - | - | M6-002 |
 | M6-002 | IMPLEMENTED_UNVERIFIED | - | - | - | - | M7 |
 | M7 | IMPLEMENTED_UNVERIFIED | - | - | - | - | M8 |
-| M8 | IN_PROGRESS | - | - | - | - | M9 |
+| M8 | IMPLEMENTED_UNVERIFIED | - | - | - | - | M9 |
+| M9 | IN_PROGRESS | - | - | - | - | M10 |
 | M10 | PENDING | - | - | - | - | M11 |
 | M11 | PENDING | - | - | - | - | M12 |
 | M12 | PENDING | - | - | - | - | M13 |
