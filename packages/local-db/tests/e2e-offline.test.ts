@@ -1,8 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { _createPosLocalDatabaseInternal } from "../src/pos-database";
-import type { PosLocalDatabase } from "../src/pos-database";
-import { completeSaleLocalTransaction } from "../src/sales-manager";
-import type { NormalizedSaleLine } from "../src/sales-manager";
 import { createTestDatabaseRuntime, type TestDatabaseRuntime } from "./test-runtime.js";
 
 describe("E2E Offline Restart", () => {
@@ -22,7 +19,7 @@ describe("E2E Offline Restart", () => {
     // 1. Instantiate the first "browser session"
     let db = _createPosLocalDatabaseInternal({
       dependencies: runtime.dependencies,
-      name: dbName
+      databaseName: dbName
     });
     
     await db.open();
@@ -33,13 +30,13 @@ describe("E2E Offline Restart", () => {
       bootstrap_version: 1,
       server_time: new Date().toISOString(),
       products: [
-        { id: "prod-1", business_id: "biz-1", sku: "SKU1", name: "Beras", status: "ACTIVE" }
+        { id: "prod-1", sku: "SKU1", name: "Beras", status: "ACTIVE", base_unit_code: "Kg", track_inventory: true, version: "v1", updated_at: new Date().toISOString() }
       ],
       product_units: [
-        { id: "unit-1", business_id: "biz-1", product_id: "prod-1", unit_code: "Kg", status: "ACTIVE", conversion_factor: "1.000000" }
+        { id: "unit-1", product_id: "prod-1", unit_code: "Kg", status: "ACTIVE", conversion_factor: "1.000000", display_name: "Kilogram", can_sell: true, can_purchase: true, allow_decimal_qty: true, version: "v1", updated_at: new Date().toISOString() }
       ],
       barcodes: [
-        { id: "bc-1", business_id: "biz-1", product_unit_id: "unit-1", barcode: "12345", status: "ACTIVE" }
+        { id: "bc-1", product_unit_id: "unit-1", barcode: "12345", status: "ACTIVE", is_internal: false, deactivated_at: null }
       ]
     });
 
@@ -50,7 +47,6 @@ describe("E2E Offline Restart", () => {
       prices: [
         {
           price_version_id: "pv-1",
-          business_id: "biz-1",
           product_unit_id: "unit-1",
           effective_from: new Date().toISOString(),
           effective_to: null,
@@ -72,17 +68,10 @@ describe("E2E Offline Restart", () => {
         default_location_id: "loc-1",
         server_time: new Date().toISOString()
       },
-      business_id: "biz-1",
-      shift_id: "shift-1",
-      shift_number: "SHF-1",
-      location_id: "loc-1",
       terminal_id: "term-1",
       device_id: "device-1",
-      cashier_user_id: "cashier-1",
       opening_cash: "100000.0000",
-      opened_at: new Date().toISOString(),
-      authorization_version: 1,
-      correlation_id: "corr-1"
+      opened_at: new Date().toISOString()
     });
 
     const res = await db.sales.completeSale({
@@ -103,12 +92,11 @@ describe("E2E Offline Restart", () => {
         business_id: "biz-1",
         lines: [
           {
-            line_key: "k1",
             product_id: "prod-1",
             product_unit_id: "unit-1",
             product_name: "Beras",
             unit_code: "Kg",
-            variant_name: null,
+            variant_name: "",
             sku: "SKU1",
             barcode: "12345",
             allow_decimal_qty: true,
@@ -120,9 +108,7 @@ describe("E2E Offline Restart", () => {
             conversion_factor: "1.000000",
             track_inventory: true
           }
-        ],
-        amount_total: "30000.0000",
-        tax_total: "0.0000"
+        ]
       },
       amount_tendered: "30000.0000"
     });
@@ -138,7 +124,7 @@ describe("E2E Offline Restart", () => {
     // Create a fresh instance (simulating refresh/restart)
     const newDb = _createPosLocalDatabaseInternal({
       dependencies: runtime.dependencies,
-      name: dbName
+      databaseName: dbName
     });
     await newDb.open();
     

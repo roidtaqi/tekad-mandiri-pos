@@ -1,68 +1,123 @@
 import { describe, it, expect } from "vitest";
 import { mapTransactionToReceipt } from "./receipt-mapper";
-import type { LocalCompletedTransaction } from "@kastur/local-db";
+import type { CompletedSaleAggregate } from "@kastur/local-db";
 
 describe("Receipt Mapper", () => {
-  const mockTransaction: LocalCompletedTransaction = {
+  const mockTransaction: CompletedSaleAggregate = {
     transaction: {
       transaction_id: "tx-123456",
-      shift_id: "shift-1",
-      cashier_id: "cashier-2",
+      command_id: "cmd-1",
+      business_id: "biz-1",
+      location_id: "loc-1",
       terminal_id: "term-1",
+      device_id: "dev-1",
+      shift_id: "shift-1",
+      transaction_number: "TX-1",
       occurred_at: "2026-08-18T10:00:00Z",
       status: "COMPLETED",
       sync_status: "PENDING",
-      amount_total: "150000.5000",
+      customer_id: null,
+      subtotal: "150000.5000",
+      promotion_discount_total: "0",
+      line_discount_total: "0",
+      transaction_discount_total: "0",
       tax_total: "0.0000",
-      amount_tendered: "200000.0000",
-      amount_change: "49999.5000",
-      cost_status: "COST_PENDING"
+      grand_total: "150000.5000",
+      total_paid: "200000.0000",
+      change_amount: "49999.5000",
+      cost_status: "COST_PENDING",
+      created_by: "cashier-2",
+      authorization_version: 1,
+      completed_at: "2026-08-18T10:00:00Z",
+      created_at: "2026-08-18T10:00:00Z",
+      correlation_id: "corr-1"
     },
     items: [
       {
         transaction_item_id: "item-1",
         transaction_id: "tx-123456",
+        line_index: 0,
+        product_id: "prod-1",
         product_unit_id: "unit-1",
-        product_name: "Kopi Hitam",
-        unit_name: "Cup",
+        product_name_snapshot: "Kopi Hitam",
+        sku_snapshot: "SKU-KOPI",
+        unit_code_snapshot: "CUP",
+        unit_name_snapshot: "Cup",
+        conversion_snapshot: "1",
         quantity: "2.500000",
         base_quantity: "2.500000",
-        unit_price: "20000.2000",
-        discount_allocation: "0.0000",
+        price_version_id_snapshot: "pv-1",
+        price_effective_from_snapshot: "2026-08-18T00:00:00Z",
+        base_unit_price_snapshot: "20000.2000",
+        tier_code_snapshot: "RETAIL",
+        tier_unit_price_snapshot: "20000.2000",
+        promotion_id: null,
+        promotion_discount_snapshot: "0",
+        manual_line_discount_snapshot: "0",
+        transaction_discount_allocation: "0.0000",
+        final_unit_price_snapshot: "20000.2000",
         line_total: "50000.5000",
-        track_inventory: true
+        tax_mode_snapshot: "NO_PPN",
+        tax_rate_snapshot: "0",
+        tax_amount_snapshot: "0",
+        cost_unit_snapshot: null,
+        cost_status: "COST_PENDING",
+        track_inventory_snapshot: true,
+        created_at: "2026-08-18T10:00:00Z"
       },
       {
         transaction_item_id: "item-2",
         transaction_id: "tx-123456",
+        line_index: 1,
+        product_id: "prod-2",
         product_unit_id: "unit-2",
-        product_name: "Gula",
-        unit_name: "Kg",
+        product_name_snapshot: "Gula",
+        sku_snapshot: "SKU-GULA",
+        unit_code_snapshot: "KG",
+        unit_name_snapshot: "Kg",
+        conversion_snapshot: "1",
         quantity: "1.000000",
         base_quantity: "1.000000",
-        unit_price: "100000.0000",
-        discount_allocation: "0.0000",
+        price_version_id_snapshot: "pv-1",
+        price_effective_from_snapshot: "2026-08-18T00:00:00Z",
+        base_unit_price_snapshot: "100000.0000",
+        tier_code_snapshot: "RETAIL",
+        tier_unit_price_snapshot: "100000.0000",
+        promotion_id: null,
+        promotion_discount_snapshot: "0",
+        manual_line_discount_snapshot: "0",
+        transaction_discount_allocation: "0.0000",
+        final_unit_price_snapshot: "100000.0000",
         line_total: "100000.0000",
-        track_inventory: true
+        tax_mode_snapshot: "NO_PPN",
+        tax_rate_snapshot: "0",
+        tax_amount_snapshot: "0",
+        cost_unit_snapshot: null,
+        cost_status: "COST_PENDING",
+        track_inventory_snapshot: true,
+        created_at: "2026-08-18T10:00:00Z"
       }
     ],
     payments: [
       {
         payment_id: "pay-1",
+        business_id: "biz-1",
         transaction_id: "tx-123456",
-        payment_method_id: "CASH",
-        amount: "150000.5000"
+        method_code: "CASH",
+        amount: "150000.5000",
+        amount_tendered: "200000.0000",
+        change_amount: "49999.5000",
+        status: "COMPLETED",
+        confirmation_type: "CASH_CONFIRMED",
+        external_reference: null,
+        received_at: "2026-08-18T10:00:00Z",
+        completed_at: "2026-08-18T10:00:00Z",
+        recorded_by: "cashier-2",
+        device_id: "dev-1",
+        correlation_id: "corr-1"
       }
     ],
-    stock_movements: [],
-    outbox: {
-      event_id: "evt-1",
-      aggregate_id: "tx-123456",
-      aggregate_type: "TRANSACTION",
-      event_type: "TRANSACTION_COMPLETED",
-      payload: {},
-      occurred_at: "2026-08-18T10:00:00Z"
-    }
+    stock_movements: []
   };
 
   const storeContext = {
@@ -78,7 +133,7 @@ describe("Receipt Mapper", () => {
     expect(receipt.transactionId).toBe("TX");
     expect(receipt.cashierName).toBe("cashier-2");
     expect(receipt.items.length).toBe(2);
-    expect(receipt.items[0].qty).toBe("2.500000"); // Fractional qty preserved
+    expect(receipt.items[0]?.qty).toBe("2.500000"); // Fractional qty preserved
     expect(receipt.total).toBe("150000.5000"); // Exact string
     expect(receipt.paid).toBe("200000.0000");
     expect(receipt.change).toBe("49999.5000");
