@@ -13,6 +13,7 @@ const CatalogFixtureShell = import.meta.env.DEV
 
 const CatalogRoutes = lazy(() => import("./features/catalog/CatalogRoutes"));
 import { CatalogWorkspace } from "./features/catalog/CatalogWorkspace";
+import { Layout } from "./features/Layout";
 
 function PlaceholderShell() {
   return (
@@ -71,27 +72,16 @@ export function App() {
           }
         />
       )}
-      <Route
-        path="/products/*"
-        element={
-          <Suspense
-            fallback={
-              <main className="ks-root app-shell">
-                <Spinner label="Memuat produk" />
-              </main>
-            }
-          >
-            <main className="ks-root app-shell" aria-labelledby="app-title">
-              <Surface className="app-shell__surface" elevation={1} padding="spacious">
-                <CatalogWorkspace authContext={null} catalogGateway={null}>
-                  <CatalogRoutes />
-                </CatalogWorkspace>
-              </Surface>
-            </main>
-          </Suspense>
-        }
-      />
-      <Route path="*" element={<PlaceholderShell />} />
+      <Route path="/" element={<Layout />}>
+        <Route path="products/*" element={
+            <Suspense fallback={<Spinner label="Memuat produk" />}>
+              <CatalogWorkspace authContext={null} catalogGateway={null}>
+                <CatalogRoutes />
+              </CatalogWorkspace>
+            </Suspense>
+        } />
+        <Route path="*" element={<PlaceholderShell />} />
+      </Route>
     </Routes>
   );
 }

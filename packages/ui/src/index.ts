@@ -109,3 +109,12 @@ export type {
 } from "./typography";
 export { ReceiptDocument } from "./receipt";
 export type { ReceiptProps } from "./receipt";
+
+export { Drawer } from "./drawer";
+export type { DrawerProps } from "./drawer";
+
+export { Sidebar, Breadcrumb } from "./navigation";
+export type { SidebarItem, SidebarProps, BreadcrumbItem, BreadcrumbProps } from "./navigation";
+
+export { RecordHeader, FilterBar } from "./data-view";
+export type { RecordHeaderProps, FilterBarProps } from "./data-view";
