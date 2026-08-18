@@ -14,3 +14,4 @@ export * from "./sync.js";
 export * from "./cash.js";
 export * from "./purchasing.js";
 export * from "./costing.js";
+export * from "./inventory.js";

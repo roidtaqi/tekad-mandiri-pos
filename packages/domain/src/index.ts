@@ -11,3 +11,5 @@ export * from "./sync/index.js";
 export * from "./cash/index.js";
 export * from "./purchasing/index.js";
 export * from "./costing/index.js";
+export * from "./pricing/index.js";
+export * from "./inventory/index.js";
