@@ -5,5 +5,5 @@ export interface ActorContext {
 }
 
 export interface SqlExecutor {
-  query<T = any>(text: string, params?: unknown[]): Promise<{ rows: T[] }>;
+  query<T = any>(text: string, params?: unknown[]): Promise<{ rows: T[], rowCount?: number | null }>;
 }

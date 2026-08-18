@@ -47,7 +47,7 @@ describeWithPostgres("M5-002: Purchasing Schema", () => {
     childUrl.pathname = `/${databaseName}`;
     childDatabaseUrl = childUrl.toString();
 
-    const output = [];
+    const output = /** @type {string[]} */ ([]);
     const pushOutput = (/** @type {string} */ line) => output.push(line);
     const result = await applyMigrations({
       databaseUrl: childDatabaseUrl,

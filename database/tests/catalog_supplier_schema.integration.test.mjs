@@ -47,7 +47,7 @@ describeWithPostgres("M5-001: Catalog Supplier and ProductSupplier Schema", () =
     childUrl.pathname = `/${databaseName}`;
     childDatabaseUrl = childUrl.toString();
 
-    const output = [];
+    const output = /** @type {string[]} */ ([]);
     const pushOutput = (/** @type {string} */ line) => output.push(line);
     const result = await applyMigrations({
       databaseUrl: childDatabaseUrl,

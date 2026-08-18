@@ -47,7 +47,7 @@ describeWithPostgres("M6-001: Costing Schema", () => {
     childUrl.pathname = `/${databaseName}`;
     childDatabaseUrl = childUrl.toString();
 
-    const output = [];
+    const output = /** @type {string[]} */ ([]);
     const pushOutput = (/** @type {string} */ line) => output.push(line);
     const result = await applyMigrations({
       databaseUrl: childDatabaseUrl,
