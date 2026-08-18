@@ -8,3 +8,4 @@ export * from "./sales/cart.js";
 export * from "./sales/payment-errors.js";
 export * from "./sales/cash-settlement.js";
 export * from "./sync/index.js";
+export * from "./cash/index.js";
