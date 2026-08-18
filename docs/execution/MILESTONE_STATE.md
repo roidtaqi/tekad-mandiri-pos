@@ -28,8 +28,8 @@
 | M4-002 | COMPLETE | - | - | - | SUCCESS | M4-003 |
 | M4-003 | COMPLETE | - | - | - | SUCCESS | M4-004 |
 | M4-004 | COMPLETE | - | - | - | SUCCESS | M4-005 |
-| M4-005 | PENDING | - | - | - | - | M4-006 |
-| M4-006 | PENDING | - | - | - | - | M4-007 |
+| M4-005 | COMPLETE | - | - | - | SUCCESS | M4-006 |
+| M4-006 | COMPLETE | - | - | - | SUCCESS | M4-007 |
 | M4-007 | PENDING | - | - | - | - | M5 |
 | M5 | PENDING | - | - | - | - | M6 |
 | M6 | PENDING | - | - | - | - | M7 |

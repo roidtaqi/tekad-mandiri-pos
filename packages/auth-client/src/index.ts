@@ -19,3 +19,5 @@ export function hasCachedPermission(
   }
   return authContext.permissions.includes(permissionCode);
 }
+
+export * from "./quick-lock.js";
