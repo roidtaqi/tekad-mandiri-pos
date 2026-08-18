@@ -23,7 +23,14 @@
 | M3-007 | PENDING | - | - | - | - | M3-008 |
 | M3-008 | PENDING | - | - | - | - | M3-009 |
 | M3-009 | PENDING | - | - | - | - | M4 |
-| M4 | PENDING | - | - | - | - | M5 |
+| M4 | IN_PROGRESS | 3006003 | - | - | - | M5 |
+| M4-001 | COMPLETE | 3006003 | - | - | SUCCESS | M4-002 |
+| M4-002 | COMPLETE | - | - | - | SUCCESS | M4-003 |
+| M4-003 | COMPLETE | - | - | - | SUCCESS | M4-004 |
+| M4-004 | COMPLETE | - | - | - | SUCCESS | M4-005 |
+| M4-005 | PENDING | - | - | - | - | M4-006 |
+| M4-006 | PENDING | - | - | - | - | M4-007 |
+| M4-007 | PENDING | - | - | - | - | M5 |
 | M5 | PENDING | - | - | - | - | M6 |
 | M6 | PENDING | - | - | - | - | M7 |
 | M7 | PENDING | - | - | - | - | M8 |

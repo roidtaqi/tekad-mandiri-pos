@@ -11,8 +11,10 @@ import { PosShiftCache } from "./shift-cache.js";
 import { PosProductLookup } from "./product-lookup.js";
 import { PosSalesManager } from "./sales-manager.js";
 
+import { PosCashManager } from "./cash-manager.js";
+
 export const POS_LOCAL_DATABASE_NAME = "kastur-pos";
-export const POS_LOCAL_DATABASE_SCHEMA_VERSION = 5;
+export const POS_LOCAL_DATABASE_SCHEMA_VERSION = 6;
 
 const posSchemaVersions: LocalSchemaVersion[] = [
   // Released V1 declarations are immutable. Append V2; never rewrite V1.
@@ -104,6 +106,15 @@ const posSchemaVersions: LocalSchemaVersion[] = [
         });
     },
   },
+  {
+    stores: {
+      cash_movements:
+        "&id, shift_id, movement_type, direction, source_type, source_id, occurred_at",
+      shift_closing_snapshots:
+        "&id, shift_id, created_at",
+    },
+    version: 6,
+  },
 ];
 
 const posSchemaDeclarations = defineSchemaVersions(
@@ -123,6 +134,7 @@ export interface PosLocalDatabase extends LocalDatabaseLifecycle {
   readonly catalog: PosCatalogCache;
   readonly pricing: PosPricingCache;
   readonly shifts: PosShiftCache;
+  readonly cash: PosCashManager;
   readonly productLookup: PosProductLookup;
   readonly sales: PosSalesManager;
 }
@@ -134,6 +146,7 @@ class PosLocalDatabaseImpl
   readonly catalog: PosCatalogCache;
   readonly pricing: PosPricingCache;
   readonly shifts: PosShiftCache;
+  readonly cash: PosCashManager;
   readonly productLookup: PosProductLookup;
   readonly sales: PosSalesManager;
 
@@ -142,6 +155,7 @@ class PosLocalDatabaseImpl
     this.catalog = new PosCatalogCache(this._database);
     this.pricing = new PosPricingCache(this._database, this.catalog);
     this.shifts = new PosShiftCache(this._database);
+    this.cash = new PosCashManager(this._database, this.shifts);
     this.productLookup = new PosProductLookup(this._database, this.pricing);
     this.sales = new PosSalesManager(this._database);
   }

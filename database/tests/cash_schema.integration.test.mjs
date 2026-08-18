@@ -61,7 +61,7 @@ describeWithPostgres("M4-001: Cash Ledger Schema", () => {
     if (adminClient && childDatabaseName) {
       try {
         await adminClient.query(`DROP DATABASE IF EXISTS ${quoteGeneratedDatabaseName(childDatabaseName)}`);
-      } catch (err) {
+      } catch {
         // cleanup failure ok in tests
       }
       await adminClient.end();

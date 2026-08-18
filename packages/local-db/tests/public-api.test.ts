@@ -36,18 +36,23 @@ describe("public local database API", () => {
       "AMBIGUOUS_IDENTIFIER",
       "BACK_OFFICE_LOCAL_DATABASE_NAME",
       "BACK_OFFICE_LOCAL_DATABASE_SCHEMA_VERSION",
+      "CASH_MOVEMENT_PERMISSION_DENIED",
       "CATALOG_ALREADY_BOOTSTRAPPED",
+      "CashOperationError",
       "CompleteSaleError",
       "EMPTY_CART",
       "IDEMPOTENCY_KEY_REUSE_ERROR",
+      "INVALID_AMOUNT",
       "INVALID_LOOKUP_INPUT",
       "INVALID_OPENING_CASH",
       "INVALID_SHIFT_CONTEXT",
+      "INVALID_SHIFT_STATE",
       "NO_PUBLISHED_PRICE",
       "PAYMENT_INSUFFICIENT",
       "POS_LOCAL_DATABASE_NAME",
       "POS_LOCAL_DATABASE_SCHEMA_VERSION",
       "PRODUCT_NOT_FOUND",
+      "PosCashManager",
       "PosSalesManager",
       "PricingBootstrapError",
       "ProductLookupError",
@@ -58,7 +63,9 @@ describe("public local database API", () => {
       "SALE_SHIFT_CONTEXT_MISMATCH",
       "SALE_TERMINAL_REQUIRED",
       "SALE_UNIT_CONVERSION_INVALID",
+      "SHIFT_ALREADY_CLOSING",
       "SHIFT_AUTHORIZATION_EXPIRED",
+      "SHIFT_NOT_OPEN",
       "SHIFT_OPEN_PERMISSION_DENIED",
       "SHIFT_REQUIRED",
       "ShiftOpenError",
@@ -77,7 +84,7 @@ describe("public local database API", () => {
     expect(POS_LOCAL_DATABASE_NAME).not.toBe(
       BACK_OFFICE_LOCAL_DATABASE_NAME,
     );
-    expect(POS_LOCAL_DATABASE_SCHEMA_VERSION).toBe(5);
+    expect(POS_LOCAL_DATABASE_SCHEMA_VERSION).toBe(6);
     expect(BACK_OFFICE_LOCAL_DATABASE_SCHEMA_VERSION).toBe(1);
 
     const pos = createPosLocalDatabase();
@@ -122,9 +129,9 @@ describe("current production definitions", () => {
     expect(definition.schemaVersions[0]?.stores).toEqual({});
 
     if (definition.application === "pos") {
-      expect(definition.currentSchemaVersion).toBe(5);
-      expect(definition.schemaVersions).toHaveLength(5);
-      expect(definition.schemaVersions[4]?.version).toBe(5);
+      expect(definition.currentSchemaVersion).toBe(6);
+      expect(definition.schemaVersions).toHaveLength(6);
+      expect(definition.schemaVersions[5]?.version).toBe(6);
       expect(Object.keys(definition.schemaVersions[3]?.stores ?? {}).sort()).toEqual([
         "shifts",
       ]);
@@ -134,6 +141,10 @@ describe("current production definitions", () => {
         "stock_movements",
         "transaction_items",
         "transactions",
+      ]);
+      expect(Object.keys(definition.schemaVersions[5]?.stores ?? {}).sort()).toEqual([
+        "cash_movements",
+        "shift_closing_snapshots",
       ]);
     } else {
       expect(definition.currentSchemaVersion).toBe(1);
@@ -157,6 +168,7 @@ describe("current production definitions", () => {
     if (definition.application === "pos") {
       expect(objectStoreNames.sort()).toEqual([
         "barcodes",
+        "cash_movements",
         "catalog_bootstrap_state",
         "outbox",
         "payments",
@@ -164,6 +176,7 @@ describe("current production definitions", () => {
         "product_units",
         "products",
         "published_retail_prices",
+        "shift_closing_snapshots",
         "shifts",
         "stock_movements",
         "transaction_items",
@@ -203,7 +216,7 @@ describe("current production definitions", () => {
       }),
     );
     await dbV2.open();
-    expect(dbV2.schemaVersion).toBe(5);
+    expect(dbV2.schemaVersion).toBe(6);
     dbV2.close();
   });
 

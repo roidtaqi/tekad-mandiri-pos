@@ -8,6 +8,7 @@ export type {
   LocalDatabaseApplication,
   LocalDatabaseLifecycle,
 } from "./local-database";
+export * from "./cash-manager.js";
 export {
   createPosLocalDatabase,
   POS_LOCAL_DATABASE_NAME,

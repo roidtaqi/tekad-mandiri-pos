@@ -260,8 +260,25 @@ export class PosShiftCache {
       .equals(contextKey)
       .first();
 
-    if (!record || record.status !== "OPEN") return null;
+    if (!record || record.status === "CLOSED" || record.status === "FORCED_CLOSED") return null;
 
     return record as LocalShiftRecord;
   }
+
+  async markShiftClosingStarted(shiftId: string, timestamp: string): Promise<void> {
+    await this.db.table("shifts").update(shiftId, {
+      status: "CLOSING",
+      closing_started_at: timestamp
+    });
+  }
+
+  async markShiftClosed(shiftId: string, timestamp: string): Promise<void> {
+    // When closed, remove active_context_key so a new shift can be opened
+    await this.db.table("shifts").update(shiftId, {
+      status: "CLOSED",
+      closed_at: timestamp,
+      active_context_key: null
+    });
+  }
 }
+

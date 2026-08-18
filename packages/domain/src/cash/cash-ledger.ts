@@ -1,5 +1,5 @@
 import { MoneyValue, parseMoney, moneyAdd, moneySubtract, moneyCompare } from "@kastur/numeric";
-import { CashMovementType, CashMovementDirection, CashVarianceType, ShiftDTO, CashMovementDTO } from "@kastur/contracts";
+import { CashMovementType, CashMovementDirection, CashVarianceType, CashMovementDTO } from "@kastur/contracts";
 
 export function getCashMovementDirection(type: CashMovementType): CashMovementDirection {
   switch (type) {
