@@ -40,7 +40,9 @@
 | M5-006 | IMPLEMENTED_UNVERIFIED | - | - | - | - | M5-007 |
 | M5-007 | IMPLEMENTED_UNVERIFIED | - | - | - | - | M6 |
 | M6 | IN_PROGRESS | - | - | - | - | M7 |
-| M7 | PENDING | - | - | - | - | M8 |
+| M6-001 | IMPLEMENTED_UNVERIFIED | - | - | - | - | M6-002 |
+| M6-002 | IMPLEMENTED_UNVERIFIED | - | - | - | - | M7 |
+| M7 | IN_PROGRESS | - | - | - | - | M8 |
 | M9 | PENDING | - | - | - | - | M10 |
 | M10 | PENDING | - | - | - | - | M11 |
 | M11 | PENDING | - | - | - | - | M12 |

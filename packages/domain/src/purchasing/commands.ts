@@ -233,24 +233,20 @@ export async function postPurchase(
 
   // A complete post requires domain verification, status transitions, stock movements.
   // For now, we update the status in the DB directly.
-  try {
-    const res = await executor.query(
-      `UPDATE purchasing.purchases 
-       SET status = 'POSTED', posted_at = NOW(), version = version + 1
-       WHERE id = $1 AND status IN ('READY_TO_POST', 'RECEIVED')
-       RETURNING version`,
-      [req.purchase_id]
-    );
+  const res = await executor.query(
+    `UPDATE purchasing.purchases 
+     SET status = 'POSTED', posted_at = NOW(), version = version + 1
+     WHERE id = $1 AND status IN ('READY_TO_POST', 'RECEIVED')
+     RETURNING version`,
+    [req.purchase_id]
+  );
 
-    if (res.rowCount === 0) {
-       throw new PurchasingError("VALIDATION_ERROR", "Purchase cannot be posted or not found");
-    }
-
-    return {
-      purchase_id: req.purchase_id,
-      version: res.rows[0].version
-    };
-  } catch (err: any) {
-    throw err;
+  if (res.rowCount === 0) {
+     throw new PurchasingError("VALIDATION_ERROR", "Purchase cannot be posted or not found");
   }
+
+  return {
+    purchase_id: req.purchase_id,
+    version: res.rows[0].version
+  };
 }
