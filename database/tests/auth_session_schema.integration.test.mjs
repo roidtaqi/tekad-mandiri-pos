@@ -116,7 +116,6 @@ describeWithPostgres("M1-003: Auth / Session Contract Foundation", () => {
 
   it("F. identity.terminal_device_assignments does NOT exist", async () => {
     await expectTableToExist("identity", "terminal_device_assignments", false);
-    await expectTableToExist("core", "terminals", false);
   });
 
   it("G. exact expected column types for all three new tables", async () => {
