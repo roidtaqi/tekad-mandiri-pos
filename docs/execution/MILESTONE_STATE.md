@@ -47,8 +47,8 @@
 | M9 | IMPLEMENTED_UNVERIFIED | - | - | - | - | M10 |
 | M10 | IMPLEMENTED_UNVERIFIED | - | - | - | - | M11 |
 | M11 | IMPLEMENTED_UNVERIFIED | - | - | - | - | M12 |
-| M12 | IN_PROGRESS | - | - | - | - | M13 |
-| M13 | PENDING | - | - | - | - | M14 |
+| M12 | IMPLEMENTED_UNVERIFIED | - | - | - | - | M13 |
+| M13 | IN_PROGRESS | - | - | - | - | M14 |
 | M14 | PENDING | - | - | - | - | M15 |
 | M15 | PENDING | - | - | - | - | M16 |
 | M16 | PENDING | - | - | - | - | - |
