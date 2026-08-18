@@ -5,6 +5,7 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { applyMigrations } from "../scripts/migrations.mjs";
+import { createPurchaseDraft } from "../../packages/domain/src/purchasing/commands.js";
 
 const configuredAdminUrl = process.env.TEST_DATABASE_URL?.trim();
 const describeWithPostgres = configuredAdminUrl === undefined ? describe.skip : describe;
@@ -33,7 +34,7 @@ function quoteGeneratedDatabaseName(databaseName) {
   return `"${databaseName}"`;
 }
 
-describeWithPostgres("M5-001: Catalog Supplier and ProductSupplier Schema", () => {
+describeWithPostgres("M5-002: Purchasing Application Commands", () => {
   beforeAll(async () => {
     const adminUrl = requireSafeAdminUrl();
     adminClient = new Client({ connectionString: adminUrl.toString() });
@@ -76,8 +77,8 @@ describeWithPostgres("M5-001: Catalog Supplier and ProductSupplier Schema", () =
   });
 
   const businessId = randomUUID();
-  const categoryId = randomUUID();
-  const productId = randomUUID();
+  const locationId = randomUUID();
+  const userId = randomUUID();
   const supplierId = randomUUID();
 
   beforeAll(async () => {
@@ -89,42 +90,60 @@ describeWithPostgres("M5-001: Catalog Supplier and ProductSupplier Schema", () =
     `, [businessId]);
 
     await client.query(`
-      INSERT INTO catalog.categories (id, business_id, name, status, created_at, updated_at, version)
-      VALUES ($1, $2, 'Category', 'ACTIVE', NOW(), NOW(), 1)
-    `, [categoryId, businessId]);
+      INSERT INTO core.locations (id, business_id, name, type, status, created_at, updated_at, version)
+      VALUES ($1, $2, 'Test Location', 'STORE', 'ACTIVE', NOW(), NOW(), 1)
+    `, [locationId, businessId]);
 
     await client.query(`
-      INSERT INTO catalog.products (id, business_id, sku, name, category_id, base_unit_code, track_inventory, status)
-      VALUES ($1, $2, 'TEST-SKU', 'Test Product', $3, 'PCS', true, 'ACTIVE')
-    `, [productId, businessId, categoryId]);
-  });
-
-  it("can insert a supplier", async () => {
-    if (client === undefined) throw new Error("client is not initialized.");
-
-    const res = await client.query(`
-      INSERT INTO catalog.suppliers (id, business_id, code, name, phone, email, address, status, created_at, updated_at, version)
-      VALUES ($1, $2, 'SUPP-1', 'Test Supplier', '123456789', 'supp@test.com', 'Address 1', 'ACTIVE', NOW(), NOW(), 1)
-      RETURNING *
+      INSERT INTO catalog.suppliers (id, business_id, code, name, status, created_at, updated_at, version)
+      VALUES ($1, $2, 'SUPP-1', 'Test Supplier', 'ACTIVE', NOW(), NOW(), 1)
     `, [supplierId, businessId]);
-
-    expect(res.rowCount).toBe(1);
-    expect(res.rows[0].id).toBe(supplierId);
-    expect(res.rows[0].name).toBe('Test Supplier');
   });
 
-  it("can insert a product_supplier", async () => {
+  it("can create a purchase draft", async () => {
     if (client === undefined) throw new Error("client is not initialized.");
 
-    const res = await client.query(`
-      INSERT INTO catalog.product_suppliers (product_id, supplier_id, supplier_sku, is_preferred, status, created_at)
-      VALUES ($1, $2, 'SUPP-SKU-1', true, 'ACTIVE', NOW())
-      RETURNING *
-    `, [productId, supplierId]);
+    const purchaseId = randomUUID();
+    const ctx = {
+      user_id: userId,
+      business_id: businessId,
+      permissions: new Set(["purchase.create"]),
+    };
 
-    expect(res.rowCount).toBe(1);
-    expect(res.rows[0].product_id).toBe(productId);
-    expect(res.rows[0].supplier_id).toBe(supplierId);
-    expect(res.rows[0].is_preferred).toBe(true);
+    const res = await createPurchaseDraft(ctx, client, {
+      purchase_id: purchaseId,
+      location_id: locationId,
+      supplier_id: supplierId,
+      purchase_number: "PUR-123",
+      notes: "Test purchase",
+    });
+
+    expect(res.purchase_id).toBe(purchaseId);
+    expect(res.version).toBe("1");
+
+    const row = await client.query(`SELECT * FROM purchasing.purchases WHERE id = $1`, [purchaseId]);
+    expect(row.rows[0].status).toBe("DRAFT");
+    expect(row.rows[0].purchase_number).toBe("PUR-123");
+  });
+
+  it("rejects without permission", async () => {
+    if (client === undefined) throw new Error("client is not initialized.");
+
+    const purchaseId = randomUUID();
+    const ctx = {
+      user_id: userId,
+      business_id: businessId,
+      permissions: new Set(),
+    };
+
+    await expect(
+      createPurchaseDraft(ctx, client, {
+        purchase_id: purchaseId,
+        location_id: locationId,
+        supplier_id: supplierId,
+        purchase_number: "PUR-124",
+        notes: null,
+      })
+    ).rejects.toThrow(/Requires purchase.create/);
   });
 });

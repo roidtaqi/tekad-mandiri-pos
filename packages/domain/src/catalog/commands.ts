@@ -54,20 +54,16 @@ export async function createSupplier(
   const name = req.name.trim();
   if (!name) throw new CatalogError("VALIDATION_ERROR", "Name is required", "name");
 
-  try {
-    const res = await executor.query(
-      `INSERT INTO catalog.suppliers (id, business_id, code, name, phone, email, address, payment_details_json, status, created_at, updated_at, version)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'ACTIVE', NOW(), NOW(), 1)
-       RETURNING version`,
-      [req.supplier_id, ctx.business_id, req.code, name, req.phone, req.email, req.address, req.payment_details_json ? JSON.stringify(req.payment_details_json) : null]
-    );
-    return {
-      supplier_id: req.supplier_id,
-      version: res.rows[0].version
-    };
-  } catch (err: any) {
-    throw err;
-  }
+  const res = await executor.query(
+    `INSERT INTO catalog.suppliers (id, business_id, code, name, phone, email, address, payment_details_json, status, created_at, updated_at, version)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'ACTIVE', NOW(), NOW(), 1)
+     RETURNING version`,
+    [req.supplier_id, ctx.business_id, req.code, name, req.phone, req.email, req.address, req.payment_details_json ? JSON.stringify(req.payment_details_json) : null]
+  );
+  return {
+    supplier_id: req.supplier_id,
+    version: res.rows[0].version
+  };
 }
 
 export async function createProductSupplier(

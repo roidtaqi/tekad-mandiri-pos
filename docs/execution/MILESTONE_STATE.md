@@ -32,8 +32,8 @@
 | M4-006 | COMPLETE | - | - | - | SUCCESS | M4-007 |
 | M4-007 | COMPLETE | - | - | - | SUCCESS | M5 |
 | M5 | IN_PROGRESS | - | - | - | - | M6 |
-| M5-001 | PENDING | - | - | - | - | M5-002 |
-| M5-002 | PENDING | - | - | - | - | M5-003 |
+| M5-001 | COMPLETE | - | - | - | SUCCESS | M5-002 |
+| M5-002 | COMPLETE | - | - | - | SUCCESS | M5-003 |
 | M5-003 | PENDING | - | - | - | - | M5-004 |
 | M5-004 | PENDING | - | - | - | - | M5-005 |
 | M5-005 | PENDING | - | - | - | - | M5-006 |

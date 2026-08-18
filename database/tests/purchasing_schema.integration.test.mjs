@@ -33,7 +33,7 @@ function quoteGeneratedDatabaseName(databaseName) {
   return `"${databaseName}"`;
 }
 
-describeWithPostgres("M5-001: Catalog Supplier and ProductSupplier Schema", () => {
+describeWithPostgres("M5-002: Purchasing Schema", () => {
   beforeAll(async () => {
     const adminUrl = requireSafeAdminUrl();
     adminClient = new Client({ connectionString: adminUrl.toString() });
@@ -76,9 +76,12 @@ describeWithPostgres("M5-001: Catalog Supplier and ProductSupplier Schema", () =
   });
 
   const businessId = randomUUID();
+  const locationId = randomUUID();
   const categoryId = randomUUID();
   const productId = randomUUID();
+  const productUnitId = randomUUID();
   const supplierId = randomUUID();
+  const purchaseId = randomUUID();
 
   beforeAll(async () => {
     if (client === undefined) throw new Error("client is not initialized.");
@@ -89,6 +92,11 @@ describeWithPostgres("M5-001: Catalog Supplier and ProductSupplier Schema", () =
     `, [businessId]);
 
     await client.query(`
+      INSERT INTO core.locations (id, business_id, name, type, status, created_at, updated_at, version)
+      VALUES ($1, $2, 'Test Location', 'STORE', 'ACTIVE', NOW(), NOW(), 1)
+    `, [locationId, businessId]);
+
+    await client.query(`
       INSERT INTO catalog.categories (id, business_id, name, status, created_at, updated_at, version)
       VALUES ($1, $2, 'Category', 'ACTIVE', NOW(), NOW(), 1)
     `, [categoryId, businessId]);
@@ -97,34 +105,55 @@ describeWithPostgres("M5-001: Catalog Supplier and ProductSupplier Schema", () =
       INSERT INTO catalog.products (id, business_id, sku, name, category_id, base_unit_code, track_inventory, status)
       VALUES ($1, $2, 'TEST-SKU', 'Test Product', $3, 'PCS', true, 'ACTIVE')
     `, [productId, businessId, categoryId]);
-  });
 
-  it("can insert a supplier", async () => {
-    if (client === undefined) throw new Error("client is not initialized.");
+    await client.query(`
+      INSERT INTO catalog.product_units (id, product_id, unit_code, conversion_factor, can_sell, can_purchase, allow_decimal_qty, status, created_at)
+      VALUES ($1, $2, 'PCS', 1, true, true, false, 'ACTIVE', NOW())
+    `, [productUnitId, productId]);
 
-    const res = await client.query(`
-      INSERT INTO catalog.suppliers (id, business_id, code, name, phone, email, address, status, created_at, updated_at, version)
-      VALUES ($1, $2, 'SUPP-1', 'Test Supplier', '123456789', 'supp@test.com', 'Address 1', 'ACTIVE', NOW(), NOW(), 1)
-      RETURNING *
+    await client.query(`
+      INSERT INTO catalog.suppliers (id, business_id, code, name, status, created_at, updated_at, version)
+      VALUES ($1, $2, 'SUPP-1', 'Test Supplier', 'ACTIVE', NOW(), NOW(), 1)
     `, [supplierId, businessId]);
-
-    expect(res.rowCount).toBe(1);
-    expect(res.rows[0].id).toBe(supplierId);
-    expect(res.rows[0].name).toBe('Test Supplier');
   });
 
-  it("can insert a product_supplier", async () => {
+  it("can insert a purchase and purchase_items", async () => {
     if (client === undefined) throw new Error("client is not initialized.");
 
     const res = await client.query(`
-      INSERT INTO catalog.product_suppliers (product_id, supplier_id, supplier_sku, is_preferred, status, created_at)
-      VALUES ($1, $2, 'SUPP-SKU-1', true, 'ACTIVE', NOW())
+      INSERT INTO purchasing.purchases (
+        id, business_id, location_id, supplier_id, purchase_number, status, integrity_status, payment_status, purchase_date, created_by, created_at, updated_at, version
+      )
+      VALUES (
+        $1, $2, $3, $4, 'PUR-001', 'DRAFT', 'CLEAR', 'UNPAID', CURRENT_DATE, $2, NOW(), NOW(), 1
+      )
       RETURNING *
-    `, [productId, supplierId]);
+    `, [purchaseId, businessId, locationId, supplierId]);
 
     expect(res.rowCount).toBe(1);
-    expect(res.rows[0].product_id).toBe(productId);
-    expect(res.rows[0].supplier_id).toBe(supplierId);
-    expect(res.rows[0].is_preferred).toBe(true);
+
+    const itemRes = await client.query(`
+      INSERT INTO purchasing.purchase_items (
+        id, purchase_id, product_id, product_unit_id, product_name_snapshot, unit_name_snapshot, conversion_snapshot, expected_qty, created_at
+      )
+      VALUES (
+        $1, $2, $3, $4, 'Test Product', 'PCS', 1, 10, NOW()
+      )
+      RETURNING *
+    `, [randomUUID(), purchaseId, productId, productUnitId]);
+
+    expect(itemRes.rowCount).toBe(1);
+    
+    const snapshotRes = await client.query(`
+      INSERT INTO purchasing.purchase_agreement_snapshots (
+        id, purchase_id, snapshot_version, snapshot_json, locked_at, locked_by
+      )
+      VALUES (
+        $1, $2, 1, '{}', NOW(), $3
+      )
+      RETURNING *
+    `, [randomUUID(), purchaseId, businessId]);
+    
+    expect(snapshotRes.rowCount).toBe(1);
   });
 });

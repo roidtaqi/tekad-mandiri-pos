@@ -12,3 +12,4 @@ export * from "./pos-catalog.js";
 export * from "./pos-pricing.js";
 export * from "./sync.js";
 export * from "./cash.js";
+export * from "./purchasing.js";
