@@ -10,3 +10,4 @@ export * from "./auth.js";
 export * from "./catalog.js";
 export * from "./pos-catalog.js";
 export * from "./pos-pricing.js";
+export * from "./sync.js";
