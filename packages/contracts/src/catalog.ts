@@ -107,3 +107,53 @@ export class CatalogError extends Error {
     this.name = "CatalogError";
   }
 }
+
+export interface SupplierDTO {
+  readonly id: string;
+  readonly code: string | null;
+  readonly name: string;
+  readonly phone: string | null;
+  readonly email: string | null;
+  readonly address: string | null;
+  readonly payment_details_json: Record<string, unknown> | null;
+  readonly status: "ACTIVE" | "INACTIVE";
+  readonly created_at: string;
+  readonly updated_at: string;
+  readonly version: string;
+}
+
+export interface ProductSupplierDTO {
+  readonly product_id: string;
+  readonly supplier_id: string;
+  readonly supplier_sku: string | null;
+  readonly is_preferred: boolean;
+  readonly status: "ACTIVE" | "INACTIVE";
+  readonly created_at: string;
+}
+
+export interface CreateSupplierRequest {
+  readonly supplier_id: string;
+  readonly name: string;
+  readonly code: string | null;
+  readonly phone: string | null;
+  readonly email: string | null;
+  readonly address: string | null;
+  readonly payment_details_json: Record<string, unknown> | null;
+}
+
+export interface CreateProductSupplierRequest {
+  readonly product_id: string;
+  readonly supplier_id: string;
+  readonly supplier_sku: string | null;
+  readonly is_preferred: boolean;
+}
+
+export interface CreateSupplierResult {
+  readonly supplier_id: string;
+  readonly version: string;
+}
+
+export interface CreateProductSupplierResult {
+  readonly product_id: string;
+  readonly supplier_id: string;
+}
