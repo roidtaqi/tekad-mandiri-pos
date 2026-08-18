@@ -60,3 +60,110 @@ export async function createPurchaseDraft(
     throw err;
   }
 }
+
+export interface ReceivePurchaseRequest {
+  readonly receipt_id: string;
+  readonly purchase_id: string;
+  readonly location_id: string;
+  readonly receipt_number: string;
+  readonly notes: string | null;
+}
+
+export interface ReceivePurchaseResult {
+  readonly receipt_id: string;
+}
+
+export async function receivePurchase(
+  ctx: ActorContext,
+  executor: SqlExecutor,
+  req: ReceivePurchaseRequest
+): Promise<ReceivePurchaseResult> {
+  if (!ctx.permissions.has("purchase.receive")) {
+    throw new PurchasingError("PERMISSION_DENIED", "Requires purchase.receive permission");
+  }
+
+  try {
+    const res = await executor.query(
+      `INSERT INTO purchasing.receipts (
+        id, business_id, location_id, purchase_id, receipt_number, received_at, received_by, notes, created_at
+      )
+      VALUES (
+        $1, $2, $3, $4, $5, NOW(), $6, $7, NOW()
+      )
+      RETURNING id`,
+      [req.receipt_id, ctx.business_id, req.location_id, req.purchase_id, req.receipt_number, ctx.user_id, req.notes]
+    );
+
+    return {
+      receipt_id: res.rows[0].id
+    };
+  } catch (err: any) {
+    if (err.code === "23505" && err.constraint === "receipts_number_unique") {
+      throw new PurchasingError("VALIDATION_ERROR", "Receipt number must be unique", "receipt_number");
+    }
+    throw err;
+  }
+}
+
+export interface CapturePurchaseInvoiceRequest {
+  readonly invoice_id: string;
+  readonly purchase_id: string;
+  readonly supplier_invoice_number: string | null;
+  readonly invoice_date: string | null;
+  readonly subtotal: string;
+  readonly item_discount_total: string;
+  readonly global_discount_total: string;
+  readonly tax_total: string;
+  readonly acquisition_charge_total: string;
+  readonly grand_total: string;
+}
+
+export interface CapturePurchaseInvoiceResult {
+  readonly invoice_id: string;
+  readonly version: string;
+}
+
+export async function capturePurchaseInvoice(
+  ctx: ActorContext,
+  executor: SqlExecutor,
+  req: CapturePurchaseInvoiceRequest
+): Promise<CapturePurchaseInvoiceResult> {
+  if (!ctx.permissions.has("purchase.invoice")) {
+    throw new PurchasingError("PERMISSION_DENIED", "Requires purchase.invoice permission");
+  }
+
+  try {
+    const res = await executor.query(
+      `INSERT INTO purchasing.purchase_invoices (
+        id, purchase_id, supplier_invoice_number, invoice_date, subtotal, item_discount_total, global_discount_total, tax_total, acquisition_charge_total, grand_total, captured_at, captured_by, version
+      )
+      VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), $11, 1
+      )
+      RETURNING version`,
+      [
+        req.invoice_id,
+        req.purchase_id,
+        req.supplier_invoice_number,
+        req.invoice_date,
+        req.subtotal,
+        req.item_discount_total,
+        req.global_discount_total,
+        req.tax_total,
+        req.acquisition_charge_total,
+        req.grand_total,
+        ctx.user_id
+      ]
+    );
+
+    return {
+      invoice_id: req.invoice_id,
+      version: res.rows[0].version
+    };
+  } catch (err: any) {
+    if (err.code === "23505" && err.constraint === "purchase_invoices_purchase_unique") {
+      throw new PurchasingError("VALIDATION_ERROR", "Purchase already has an invoice");
+    }
+    throw err;
+  }
+}

@@ -34,9 +34,9 @@
 | M5 | IN_PROGRESS | - | - | - | - | M6 |
 | M5-001 | COMPLETE | - | - | - | SUCCESS | M5-002 |
 | M5-002 | COMPLETE | - | - | - | SUCCESS | M5-003 |
-| M5-003 | PENDING | - | - | - | - | M5-004 |
-| M5-004 | PENDING | - | - | - | - | M5-005 |
-| M5-005 | PENDING | - | - | - | - | M5-006 |
+| M5-003 | IMPLEMENTED_UNVERIFIED | - | - | - | - | M5-004 |
+| M5-004 | IMPLEMENTED_UNVERIFIED | - | - | - | - | M5-005 |
+| M5-005 | IMPLEMENTED_UNVERIFIED | - | - | - | - | M5-006 |
 | M5-006 | PENDING | - | - | - | - | M5-007 |
 | M5-007 | PENDING | - | - | - | - | M6 |
 | M6 | PENDING | - | - | - | - | M7 |

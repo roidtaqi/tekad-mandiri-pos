@@ -38,3 +38,79 @@ export interface PurchaseItemDTO {
   readonly final_landed_cost_per_base_unit: string | null;
   readonly created_at: string;
 }
+
+export interface PurchaseReceiptDTO {
+  readonly id: string;
+  readonly business_id: string;
+  readonly location_id: string;
+  readonly purchase_id: string;
+  readonly receipt_number: string;
+  readonly received_at: string;
+  readonly received_by: string;
+  readonly notes: string | null;
+  readonly created_at: string;
+}
+
+export interface PurchaseReceiptItemDTO {
+  readonly id: string;
+  readonly receipt_id: string;
+  readonly purchase_item_id: string;
+  readonly product_id: string;
+  readonly product_unit_id: string;
+  readonly conversion_snapshot: string;
+  readonly received_qty: string;
+  readonly accepted_qty: string;
+  readonly rejected_qty: string;
+  readonly free_qty_received: string;
+  readonly base_qty_accepted: string;
+  readonly rejection_reason: string | null;
+  readonly created_at: string;
+}
+
+export interface PurchaseInvoiceDTO {
+  readonly id: string;
+  readonly purchase_id: string;
+  readonly supplier_invoice_number: string | null;
+  readonly invoice_date: string | null;
+  readonly subtotal: string;
+  readonly item_discount_total: string;
+  readonly global_discount_total: string;
+  readonly tax_total: string;
+  readonly acquisition_charge_total: string;
+  readonly grand_total: string;
+  readonly captured_at: string;
+  readonly captured_by: string;
+  readonly version: string;
+}
+
+export interface PurchaseInvoiceItemDTO {
+  readonly id: string;
+  readonly invoice_id: string;
+  readonly purchase_item_id: string;
+  readonly invoiced_qty: string;
+  readonly unit_price: string;
+  readonly item_discount_amount: string;
+  readonly tax_amount: string;
+  readonly free_qty: string;
+}
+
+export interface PurchaseChargeDTO {
+  readonly id: string;
+  readonly purchase_id: string;
+  readonly type: "FREIGHT" | "HANDLING" | "NON_RECOVERABLE_TAX" | "OTHER_DIRECT_ACQUISITION";
+  readonly description: string | null;
+  readonly amount: string;
+  readonly allocation_method: "BY_ITEM_VALUE" | "BY_QUANTITY" | "BY_WEIGHT" | "MANUAL";
+  readonly created_at: string;
+}
+
+export interface PurchasePaymentDTO {
+  readonly id: string;
+  readonly purchase_id: string;
+  readonly amount: string;
+  readonly method: string;
+  readonly reference: string | null;
+  readonly paid_at: string;
+  readonly recorded_by: string;
+  readonly created_at: string;
+}
