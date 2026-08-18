@@ -114,3 +114,42 @@ export interface PurchasePaymentDTO {
   readonly recorded_by: string;
   readonly created_at: string;
 }
+
+export interface PurchaseCorrectionDTO {
+  readonly id: string;
+  readonly purchase_id: string;
+  readonly reason: string;
+  readonly correction_type: string;
+  readonly before_snapshot: Record<string, unknown>;
+  readonly after_snapshot: Record<string, unknown>;
+  readonly created_by: string;
+  readonly created_at: string;
+  readonly correlation_id: string;
+}
+
+export interface SupplierReturnDTO {
+  readonly id: string;
+  readonly business_id: string;
+  readonly location_id: string;
+  readonly supplier_id: string;
+  readonly purchase_id: string;
+  readonly return_number: string;
+  readonly status: string;
+  readonly settlement_status: "PENDING_CREDIT" | "CREDIT_RECEIVED" | "REPLACED" | "REFUNDED" | "WRITTEN_OFF";
+  readonly reason: string;
+  readonly created_by: string;
+  readonly created_at: string;
+  readonly resolved_at: string | null;
+}
+
+export interface SupplierReturnItemDTO {
+  readonly id: string;
+  readonly supplier_return_id: string;
+  readonly purchase_item_id: string;
+  readonly receipt_item_id: string | null;
+  readonly product_id: string;
+  readonly qty: string;
+  readonly base_qty: string;
+  readonly original_landed_cost_per_base_unit: string;
+  readonly reason: string;
+}

@@ -167,3 +167,90 @@ export async function capturePurchaseInvoice(
     throw err;
   }
 }
+
+export interface CreateSupplierReturnRequest {
+  readonly return_id: string;
+  readonly purchase_id: string;
+  readonly location_id: string;
+  readonly supplier_id: string;
+  readonly return_number: string;
+  readonly reason: string;
+}
+
+export interface CreateSupplierReturnResult {
+  readonly return_id: string;
+}
+
+export async function createSupplierReturn(
+  ctx: ActorContext,
+  executor: SqlExecutor,
+  req: CreateSupplierReturnRequest
+): Promise<CreateSupplierReturnResult> {
+  if (!ctx.permissions.has("purchase.return")) {
+    throw new PurchasingError("PERMISSION_DENIED", "Requires purchase.return permission");
+  }
+
+  try {
+    const res = await executor.query(
+      `INSERT INTO purchasing.supplier_returns (
+        id, business_id, location_id, supplier_id, purchase_id, return_number, status, settlement_status, reason, created_by, created_at
+      )
+      VALUES (
+        $1, $2, $3, $4, $5, $6, 'DRAFT', 'PENDING_CREDIT', $7, $8, NOW()
+      )
+      RETURNING id`,
+      [req.return_id, ctx.business_id, req.location_id, req.supplier_id, req.purchase_id, req.return_number, req.reason, ctx.user_id]
+    );
+
+    return {
+      return_id: res.rows[0].id
+    };
+  } catch (err: any) {
+    if (err.code === "23505" && err.constraint === "supplier_returns_number_unique") {
+      throw new PurchasingError("VALIDATION_ERROR", "Return number must be unique", "return_number");
+    }
+    throw err;
+  }
+}
+
+export interface PostPurchaseRequest {
+  readonly purchase_id: string;
+}
+
+export interface PostPurchaseResult {
+  readonly purchase_id: string;
+  readonly version: string;
+}
+
+export async function postPurchase(
+  ctx: ActorContext,
+  executor: SqlExecutor,
+  req: PostPurchaseRequest
+): Promise<PostPurchaseResult> {
+  if (!ctx.permissions.has("purchase.post")) {
+    throw new PurchasingError("PERMISSION_DENIED", "Requires purchase.post permission");
+  }
+
+  // A complete post requires domain verification, status transitions, stock movements.
+  // For now, we update the status in the DB directly.
+  try {
+    const res = await executor.query(
+      `UPDATE purchasing.purchases 
+       SET status = 'POSTED', posted_at = NOW(), version = version + 1
+       WHERE id = $1 AND status IN ('READY_TO_POST', 'RECEIVED')
+       RETURNING version`,
+      [req.purchase_id]
+    );
+
+    if (res.rowCount === 0) {
+       throw new PurchasingError("VALIDATION_ERROR", "Purchase cannot be posted or not found");
+    }
+
+    return {
+      purchase_id: req.purchase_id,
+      version: res.rows[0].version
+    };
+  } catch (err: any) {
+    throw err;
+  }
+}
