@@ -259,25 +259,25 @@ describeWithPostgres("M1-003: Auth / Session Contract Foundation", () => {
     // O. requires existing business
     await expect(client?.query(`
       INSERT INTO identity.sessions (id, user_id, business_id, session_secret_hash, expires_at)
-      VALUES ($1, $2, $3, 'hash', NOW())
+      VALUES ($1, $2, $3, 'missing-business-hash', CURRENT_TIMESTAMP + INTERVAL '1 hour')
     `, [randomUUID(), userId, randomUUID()])).rejects.toThrow();
 
     // N. requires existing user
     await expect(client?.query(`
       INSERT INTO identity.sessions (id, user_id, business_id, session_secret_hash, expires_at)
-      VALUES ($1, $2, $3, 'hash', NOW())
+      VALUES ($1, $2, $3, 'missing-user-hash', CURRENT_TIMESTAMP + INTERVAL '1 hour')
     `, [randomUUID(), randomUUID(), businessId])).rejects.toThrow();
 
     // Q. non-null device_id requires existing device
     await expect(client?.query(`
       INSERT INTO identity.sessions (id, user_id, business_id, device_id, session_secret_hash, expires_at)
-      VALUES ($1, $2, $3, $4, 'hash', NOW())
+      VALUES ($1, $2, $3, $4, 'missing-device-hash', CURRENT_TIMESTAMP + INTERVAL '1 hour')
     `, [randomUUID(), userId, businessId, randomUUID()])).rejects.toThrow();
 
     // P. session may have device_id = NULL
     await client?.query(`
       INSERT INTO identity.sessions (id, user_id, business_id, session_secret_hash, expires_at)
-      VALUES ($1, $2, $3, 'hash', NOW())
+      VALUES ($1, $2, $3, 'nullable-device-hash', CURRENT_TIMESTAMP + INTERVAL '1 hour')
     `, [randomUUID(), userId, businessId]);
 
     // V. historical revoked session row remains storable
@@ -285,8 +285,23 @@ describeWithPostgres("M1-003: Auth / Session Contract Foundation", () => {
     // U. revoked_at may be NULL
     await client?.query(`
       INSERT INTO identity.sessions (id, user_id, business_id, device_id, session_secret_hash, expires_at, revoked_at)
-      VALUES ($1, $2, $3, $4, 'hash2', NOW(), NOW())
+      VALUES ($1, $2, $3, $4, 'revoked-session-hash', CURRENT_TIMESTAMP + INTERVAL '1 hour', NOW())
     `, [sessionId, userId, businessId, deviceId]);
+
+    // 000021: session secrets are opaque lookup keys and must be unique.
+    await expect(client?.query(`
+      INSERT INTO identity.sessions
+        (id, user_id, business_id, session_secret_hash, expires_at)
+      VALUES
+        ($1, $2, $3, 'nullable-device-hash', CURRENT_TIMESTAMP + INTERVAL '2 hours')
+    `, [randomUUID(), userId, businessId])).rejects.toThrow();
+
+    // 000021: expiry must be strictly later than issuance.
+    await expect(client?.query(`
+      INSERT INTO identity.sessions
+        (id, user_id, business_id, session_secret_hash, issued_at, expires_at)
+      VALUES ($1, $2, $3, 'invalid-expiry-hash', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    `, [randomUUID(), userId, businessId])).rejects.toThrow();
 
     // T. expires_at is NOT NULL
     await expect(client?.query(`
@@ -363,12 +378,12 @@ describeWithPostgres("M1-003: Auth / Session Contract Foundation", () => {
     await expectTableToExist("identity", "business_memberships");
   });
 
-  it("AD. permission count remains exactly 86", async () => {
+  it("AD. permission count includes the complete D09 catalog of 94", async () => {
     const res = await client?.query(`SELECT count(*) as count FROM identity.permissions`);
-    expect(parseInt(res?.rows[0].count)).toBe(86);
+    expect(parseInt(res?.rows[0].count)).toBe(94);
   });
 
-  it("AE. OWNER/ADMIN/CASHIER mappings remain 86/65/12", async () => {
+  it("AE. OWNER/ADMIN/CASHIER mappings are 94/71/15 after D09", async () => {
     const res = await client?.query(`
       SELECT r.code, count(rp.permission_id) as c 
       FROM identity.roles r 
@@ -377,9 +392,9 @@ describeWithPostgres("M1-003: Auth / Session Contract Foundation", () => {
       GROUP BY r.code
     `);
     const counts = new Map(res?.rows.map(r => [r.code, parseInt(r.c)]));
-    expect(counts.get("OWNER")).toBe(86);
-    expect(counts.get("ADMIN")).toBe(65);
-    expect(counts.get("CASHIER")).toBe(12);
+    expect(counts.get("OWNER")).toBe(94);
+    expect(counts.get("ADMIN")).toBe(71);
+    expect(counts.get("CASHIER")).toBe(15);
   });
 
   it("AF. migration rerun applies nothing twice", async () => {

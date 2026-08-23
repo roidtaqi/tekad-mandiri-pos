@@ -1,4 +1,4 @@
-import type { AuthContextResponse } from "./auth.js";
+import type { AuthContextResponse, OfflineAuthorizationGrant } from "./auth.js";
 
 export interface SyncPushRequest {
   batch_id: string;
@@ -10,6 +10,7 @@ export interface SyncPushRequest {
     location_id?: string;
     device_id: string;
     authorization_version: number;
+    offline_authorization?: OfflineAuthorizationGrant;
     correlation_id: string;
     payload: unknown;
   }>;
@@ -35,7 +36,8 @@ export interface SyncPullChange {
   entity_type: string;
   entity_id: string;
   change_type: "UPSERT" | "DEACTIVATE" | "EVENT" | "INVALIDATE";
-  entity_version: number | null;
+  /** PostgreSQL BIGINT serialized losslessly as a decimal string. */
+  entity_version: string | null;
   occurred_at: string;
   payload: unknown;
 }

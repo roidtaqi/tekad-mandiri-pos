@@ -48,10 +48,16 @@ describe("Receipt Mapper", () => {
         base_quantity: "2.500000",
         price_version_id_snapshot: "pv-1",
         price_effective_from_snapshot: "2026-08-18T00:00:00Z",
+        pricing_resolved_at_snapshot: "2026-08-18T10:00:00Z",
+        pricing_time_status_snapshot: "TRUSTED",
         base_unit_price_snapshot: "20000.2000",
+        tier_id_snapshot: "tier-retail-1",
         tier_code_snapshot: "RETAIL",
+        tier_min_qty_snapshot: "1",
         tier_unit_price_snapshot: "20000.2000",
         promotion_id: null,
+        promotion_type_snapshot: null,
+        promotion_value_snapshot: null,
         promotion_discount_snapshot: "0",
         manual_line_discount_snapshot: "0",
         transaction_discount_allocation: "0.0000",
@@ -80,10 +86,16 @@ describe("Receipt Mapper", () => {
         base_quantity: "1.000000",
         price_version_id_snapshot: "pv-1",
         price_effective_from_snapshot: "2026-08-18T00:00:00Z",
+        pricing_resolved_at_snapshot: "2026-08-18T10:00:00Z",
+        pricing_time_status_snapshot: "TRUSTED",
         base_unit_price_snapshot: "100000.0000",
+        tier_id_snapshot: "tier-retail-2",
         tier_code_snapshot: "RETAIL",
+        tier_min_qty_snapshot: "1",
         tier_unit_price_snapshot: "100000.0000",
         promotion_id: null,
+        promotion_type_snapshot: null,
+        promotion_value_snapshot: null,
         promotion_discount_snapshot: "0",
         manual_line_discount_snapshot: "0",
         transaction_discount_allocation: "0.0000",
@@ -117,7 +129,9 @@ describe("Receipt Mapper", () => {
         correlation_id: "corr-1"
       }
     ],
-    stock_movements: []
+    stock_movements: [],
+    cash_movements: [],
+    audit_events: []
   };
 
   const storeContext = {
@@ -130,7 +144,7 @@ describe("Receipt Mapper", () => {
   it("maps transaction to receipt without exposing cost/margin", () => {
     const receipt = mapTransactionToReceipt(mockTransaction, storeContext, "58mm");
     
-    expect(receipt.transactionId).toBe("TX");
+    expect(receipt.transactionId).toBe("TX-1");
     expect(receipt.cashierName).toBe("cashier-2");
     expect(receipt.items.length).toBe(2);
     expect(receipt.items[0]?.qty).toBe("2.500000"); // Fractional qty preserved
@@ -146,5 +160,23 @@ describe("Receipt Mapper", () => {
   it("assigns width correctly", () => {
     const receipt80 = mapTransactionToReceipt(mockTransaction, storeContext, "80mm");
     expect(receipt80.width).toBe("80mm");
+  });
+
+  it("expands a per-unit promotion snapshot into the receipt line discount", () => {
+    const promotedTransaction: CompletedSaleAggregate = {
+      ...mockTransaction,
+      items: [
+        {
+          ...mockTransaction.items[0]!,
+          promotion_discount_snapshot: "2500.2000",
+          manual_line_discount_snapshot: "100.0000",
+          transaction_discount_allocation: "50.0000",
+        },
+      ],
+    };
+
+    const receipt = mapTransactionToReceipt(promotedTransaction, storeContext);
+
+    expect(receipt.items[0]?.discount).toBe("6400.5");
   });
 });

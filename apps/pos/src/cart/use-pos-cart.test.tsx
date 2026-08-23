@@ -19,6 +19,16 @@ const mockLookupResult = (overrides: Partial<ProductLookupResult> = {}): Product
   price_version_id: "pv1",
   conversion_factor: "1.00000000",
   track_inventory: true,
+  price_tiers: [{
+    tier_id: "tier-retail",
+    tier_code: "RETAIL",
+    min_qty: "1",
+    unit_price: "100.00",
+    sort_order: 0,
+  }],
+  promotions: [],
+  pricing_resolved_at: "2026-08-23T00:00:00Z",
+  pricing_time_status: "TRUSTED",
   ...overrides,
 });
 
@@ -77,6 +87,61 @@ describe("usePosCart Scanner->Cart Handoff", () => {
       result.current.remove(lineKey);
     });
     expect(result.current.cart.lines).toHaveLength(0);
+  });
+
+  it("re-resolves same-unit tier and promotion when quantity crosses a threshold", () => {
+    const { result } = renderHook(() => usePosCart("biz-1"));
+    act(() => {
+      result.current.addScannedItem({
+        type: "SUCCESS",
+        barcode: "123",
+        payload: mockLookupResult({
+          price_tiers: [
+            {
+              tier_id: "tier-retail",
+              tier_code: "RETAIL",
+              min_qty: "1",
+              unit_price: "100",
+              sort_order: 0,
+            },
+            {
+              tier_id: "tier-10",
+              tier_code: "WHOLESALE",
+              min_qty: "10",
+              unit_price: "80",
+              sort_order: 1,
+            },
+          ],
+          promotions: [{
+            promotion_id: "promo-10",
+            promotion_type: "PERCENT_DISCOUNT",
+            value: "10",
+            min_qty: "10",
+            priority: 10,
+            effective_from: "2026-08-01T00:00:00.000Z",
+            effective_to: "2026-09-01T00:00:00.000Z",
+            created_at: "2026-07-01T00:00:00.000Z",
+          }],
+        }),
+      });
+    });
+    const lineKey = result.current.cart.lines[0]!.line_key;
+
+    act(() => result.current.changeQuantity(lineKey, "10"));
+
+    expect(result.current.cart.lines[0]).toMatchObject({
+      tier_code: "WHOLESALE",
+      tier_unit_price: "80",
+      promotion_id: "promo-10",
+      promotion_discount: "8",
+      unit_price: "72",
+      line_total: "720",
+    });
+    expect(result.current.totals).toEqual({
+      gross_subtotal: "800",
+      promotion_discount_total: "80",
+      grand_total: "720",
+    });
   });
   
   it("allows clearing the cart", () => {

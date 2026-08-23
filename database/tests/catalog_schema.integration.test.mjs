@@ -100,11 +100,11 @@ describeWithPostgres("M1-004: Catalog Product / Category / Brand Schema", () => 
     expect(tables).toContain("products");
   });
 
-  it("G. M1-005 tables do NOT exist", async () => {
+  it("G. later catalog migrations coexist without speculative import tables", async () => {
     const tablesRes = await client?.query(`SELECT table_name FROM information_schema.tables WHERE table_schema = 'catalog'`);
     const tables = tablesRes?.rows.map(r => r.table_name) ?? [];
-    expect(tables).not.toContain("suppliers");
-    expect(tables).not.toContain("product_suppliers");
+    expect(tables).toContain("suppliers");
+    expect(tables).toContain("product_suppliers");
     expect(tables).not.toContain("import_batches");
     expect(tables).not.toContain("import_row_results");
   });

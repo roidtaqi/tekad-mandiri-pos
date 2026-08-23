@@ -10,11 +10,12 @@ import { PosPricingCache } from "./pricing-cache.js";
 import { PosShiftCache } from "./shift-cache.js";
 import { PosProductLookup } from "./product-lookup.js";
 import { PosSalesManager } from "./sales-manager.js";
-
 import { PosCashManager } from "./cash-manager.js";
+import { PosAuditStore } from "./audit-store.js";
+import { PosSyncStore } from "./sync-store.js";
 
 export const POS_LOCAL_DATABASE_NAME = "kastur-pos";
-export const POS_LOCAL_DATABASE_SCHEMA_VERSION = 6;
+export const POS_LOCAL_DATABASE_SCHEMA_VERSION = 8;
 
 const posSchemaVersions: LocalSchemaVersion[] = [
   // Released V1 declarations are immutable. Append V2; never rewrite V1.
@@ -115,6 +116,38 @@ const posSchemaVersions: LocalSchemaVersion[] = [
     },
     version: 6,
   },
+  {
+    stores: {
+      transactions:
+        "&transaction_id, &command_id, &[business_id+transaction_number], business_id, shift_id, status, sync_status, occurred_at, [business_id+occurred_at]",
+      cash_movements:
+        "&id, shift_id, business_id, movement_type, direction, source_type, source_id, &[business_id+source_type+source_id], occurred_at",
+      outbox:
+        "&outbox_id, &command_id, business_id, business_event_id, command_type, status, created_at, [business_id+status]",
+      audit_events:
+        "&id, business_id, location_id, actor_user_id, action, entity_type, entity_id, occurred_at, correlation_id, [business_id+entity_type+entity_id]",
+      sync_state:
+        "&context_key, business_id, device_id, &[business_id+device_id], updated_at",
+      sync_conflicts:
+        "&id, business_id, command_id, status, created_at, [business_id+status]",
+      promotions: "&key, business_id, entity_id, updated_at",
+      payment_methods: "&key, business_id, entity_id, updated_at",
+      stock_balances: "&key, business_id, entity_id, updated_at",
+      authorization_cache: "&key, business_id, entity_id, updated_at",
+      sync_observed_events:
+        "&sequence, business_id, entity_type, entity_id, occurred_at, [business_id+entity_type]",
+    },
+    version: 7,
+  },
+  {
+    stores: {
+      // Multiple immutable versions are cached so a trusted offline clock can
+      // activate an already-published schedule without overwriting history.
+      published_retail_prices:
+        "&price_version_id, business_id, product_unit_id, [business_id+product_unit_id], effective_from",
+    },
+    version: 8,
+  },
 ];
 
 const posSchemaDeclarations = defineSchemaVersions(
@@ -135,6 +168,8 @@ export interface PosLocalDatabase extends LocalDatabaseLifecycle {
   readonly pricing: PosPricingCache;
   readonly shifts: PosShiftCache;
   readonly cash: PosCashManager;
+  readonly audit: PosAuditStore;
+  readonly sync: PosSyncStore;
   readonly productLookup: PosProductLookup;
   readonly sales: PosSalesManager;
 }
@@ -147,6 +182,8 @@ class PosLocalDatabaseImpl
   readonly pricing: PosPricingCache;
   readonly shifts: PosShiftCache;
   readonly cash: PosCashManager;
+  readonly audit: PosAuditStore;
+  readonly sync: PosSyncStore;
   readonly productLookup: PosProductLookup;
   readonly sales: PosSalesManager;
 
@@ -156,6 +193,8 @@ class PosLocalDatabaseImpl
     this.pricing = new PosPricingCache(this._database, this.catalog);
     this.shifts = new PosShiftCache(this._database);
     this.cash = new PosCashManager(this._database, this.shifts);
+    this.audit = new PosAuditStore(this._database);
+    this.sync = new PosSyncStore(this._database);
     this.productLookup = new PosProductLookup(this._database, this.pricing);
     this.sales = new PosSalesManager(this._database);
   }

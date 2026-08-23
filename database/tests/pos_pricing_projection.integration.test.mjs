@@ -91,7 +91,13 @@ describeWithPostgres("POS pricing projection integration", () => {
     const serverTime = '2030-01-01T12:00:00Z';
 
     const pvActiveA = crypto.randomUUID();
-    await client.query(`INSERT INTO pricing.price_versions (id, business_id, product_unit_id, status, effective_from) VALUES ($1, $2, $3, 'ACTIVE', '2030-01-01T00:00:00Z')`, [pvActiveA, bIdA, puIdA]);
+    await client.query(`
+      INSERT INTO pricing.price_versions (
+        id, business_id, product_unit_id, status, effective_from,
+        tax_mode, tax_rate_snapshot, created_by
+      )
+      VALUES ($1, $2, $3, 'ACTIVE', '2030-01-01T00:00:00Z', 'TAX_INCLUSIVE', 0, $4)
+    `, [pvActiveA, bIdA, puIdA, bIdA]);
     await client.query(`INSERT INTO pricing.price_tier_versions (id, price_version_id, tier_code, min_qty, unit_price, sort_order) VALUES ($1, $2, 'RETAIL', 1, 3500.0000, 1)`, [crypto.randomUUID(), pvActiveA]);
 
     /** @type {import("../../packages/domain/src/core/context.js").ActorContext} */
@@ -127,7 +133,13 @@ describeWithPostgres("POS pricing projection integration", () => {
     await expect(buildPosPublishedRetailPriceBootstrapProjection(ctxOwner, executor, serverTime)).rejects.toMatchObject({ code: "PRICING_PERMISSION_DENIED" });
 
     const pvActiveB = crypto.randomUUID();
-    await client.query(`INSERT INTO pricing.price_versions (id, business_id, product_unit_id, status, effective_from) VALUES ($1, $2, $3, 'ACTIVE', '2030-01-01T00:00:00Z')`, [pvActiveB, bIdB, puIdB]);
+    await client.query(`
+      INSERT INTO pricing.price_versions (
+        id, business_id, product_unit_id, status, effective_from,
+        tax_mode, tax_rate_snapshot, created_by
+      )
+      VALUES ($1, $2, $3, 'ACTIVE', '2030-01-01T00:00:00Z', 'TAX_INCLUSIVE', 0, $4)
+    `, [pvActiveB, bIdB, puIdB, bIdB]);
     await client.query(`INSERT INTO pricing.price_tier_versions (id, price_version_id, tier_code, min_qty, unit_price, sort_order) VALUES ($1, $2, 'RETAIL', 1, 4000.0000, 1)`, [crypto.randomUUID(), pvActiveB]);
     
     /** @type {import("../../packages/domain/src/core/context.js").ActorContext} */
@@ -165,7 +177,13 @@ describeWithPostgres("POS pricing projection integration", () => {
       await client.query(`INSERT INTO catalog.product_units (id, business_id, product_id, unit_code, display_name, conversion_factor, can_sell, can_purchase, allow_decimal_qty, status) VALUES ($1, $2, $3, 'PCS', 'Pieces F', 1, true, true, false, 'ACTIVE')`, [puId, bId, pIdF]);
       
       const pvId = crypto.randomUUID();
-      await client.query(`INSERT INTO pricing.price_versions (id, business_id, product_unit_id, status, effective_from, effective_to) VALUES ($1, $2, $3, $4, $5, $6)`, [pvId, bId, puId, status, from, to]);
+      await client.query(`
+        INSERT INTO pricing.price_versions (
+          id, business_id, product_unit_id, status, effective_from, effective_to,
+          tax_mode, tax_rate_snapshot, created_by
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, 'TAX_INCLUSIVE', 0, $2)
+      `, [pvId, bId, puId, status, from, to]);
       await client.query(`INSERT INTO pricing.price_tier_versions (id, price_version_id, tier_code, min_qty, unit_price, sort_order) VALUES ($1, $2, $3, $4, 100, 1)`, [crypto.randomUUID(), pvId, tier, minQty]);
 
       const res = await buildPosPublishedRetailPriceBootstrapProjection(ctx, executor, serverTime);

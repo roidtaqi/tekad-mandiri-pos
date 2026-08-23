@@ -70,6 +70,17 @@ describe("PosSalesManager", () => {
           price_effective_from: "2026-08-01T00:00:00Z",
           quantity: "2.000000",
           unit_price: "100.0000",
+          base_unit_price: "100.0000",
+          tier_id: "tier-retail",
+          tier_code: "RETAIL",
+          tier_min_qty: "1.000000",
+          tier_unit_price: "100.0000",
+          promotion_id: null,
+          promotion_type: null,
+          promotion_value: null,
+          promotion_discount: "0.0000",
+          pricing_resolved_at: "2026-08-17T01:00:00Z",
+          pricing_time_status: "TRUSTED",
           line_total: "200.0000",
           conversion_factor: "1.00000000",
           track_inventory: true
@@ -83,8 +94,10 @@ describe("PosSalesManager", () => {
     const itemCount = await (db as any)._database.table("transaction_items").count();
     const pmCount = await (db as any)._database.table("payments").count();
     const smCount = await (db as any)._database.table("stock_movements").count();
+    const cashCount = await (db as any)._database.table("cash_movements").count();
+    const auditCount = await (db as any)._database.table("audit_events").count();
     const outCount = await (db as any)._database.table("outbox").count();
-    return { txCount, itemCount, pmCount, smCount, outCount };
+    return { txCount, itemCount, pmCount, smCount, cashCount, auditCount, outCount };
   };
 
   describe("AUTH-01..08, SHIFT-03..05, SALE-02..08 - Authorization & Shift & Identity & Bounds", () => {
@@ -150,7 +163,7 @@ describe("PosSalesManager", () => {
       })).rejects.toMatchObject({ code: SALE_CART_INTEGRITY_INVALID });
 
       const counts = await getCounts();
-      expect(counts).toEqual({ txCount: 0, itemCount: 0, pmCount: 0, smCount: 0, outCount: 0 });
+      expect(counts).toEqual({ txCount: 0, itemCount: 0, pmCount: 0, smCount: 0, cashCount: 0, auditCount: 0, outCount: 0 });
     });
 
     it("SHIFT-03..05: requires open shift matching user and device", async () => {
@@ -167,7 +180,7 @@ describe("PosSalesManager", () => {
       })).rejects.toMatchObject({ code: SALE_TERMINAL_REQUIRED });
       
       const counts = await getCounts();
-      expect(counts).toEqual({ txCount: 0, itemCount: 0, pmCount: 0, smCount: 0, outCount: 0 });
+      expect(counts).toEqual({ txCount: 0, itemCount: 0, pmCount: 0, smCount: 0, cashCount: 0, auditCount: 0, outCount: 0 });
     });
   });
 
@@ -198,7 +211,7 @@ describe("PosSalesManager", () => {
   });
 
   describe("INV-01..06, OUT-01..07, IDEM-04..05 - Local Storage & Transaction Atomicity", () => {
-    const faults = ["after_transaction", "after_items", "after_payment", "after_stock", "before_outbox"] as const;
+    const faults = ["after_transaction", "after_items", "after_payment", "after_stock", "after_cash", "after_audit", "before_outbox"] as const;
     for (const fault of faults) {
       it(`ATOM-01..05: rolls back entirely if ${fault} fails`, async () => {
         _setSalesFaultForTest(db.sales, fault);
@@ -208,7 +221,7 @@ describe("PosSalesManager", () => {
         await expect(p).rejects.toThrow(`Fault: ${fault}`);
         _setSalesFaultForTest(db.sales, undefined);
         const counts = await getCounts();
-        expect(counts).toEqual({ txCount: 0, itemCount: 0, pmCount: 0, smCount: 0, outCount: 0 });
+        expect(counts).toEqual({ txCount: 0, itemCount: 0, pmCount: 0, smCount: 0, cashCount: 0, auditCount: 0, outCount: 0 });
       });
     }
 
@@ -219,6 +232,75 @@ describe("PosSalesManager", () => {
       });
       const counts = await getCounts();
       expect(counts.smCount).toBe(0); // no stock movement created
+    });
+
+    it("writes cash, audit, and canonical outbox payload in the sale transaction", async () => {
+      const result = await db.sales.completeSale({
+        auth,
+        device_id: "d1",
+        command_id: "cmd-canonical",
+        occurred_at: "2026-08-17T01:00:00Z",
+        cart,
+        amount_tendered: "300.0000",
+      });
+      const aggregate = await db.sales.getCompletedSale(result.transaction_id);
+
+      expect(aggregate.cash_movements).toHaveLength(1);
+      expect(aggregate.cash_movements[0]).toMatchObject({
+        amount: "200",
+        direction: "IN",
+        movement_type: "CASH_SALE",
+        source_id: result.transaction_id,
+        source_type: "SALE_TRANSACTION",
+      });
+      expect(aggregate.cash_movements[0]?.amount).not.toBe("300");
+
+      expect(aggregate.audit_events).toHaveLength(1);
+      expect(aggregate.audit_events[0]).toMatchObject({
+        action: "TRANSACTION_COMPLETED",
+        actor_type: "USER",
+        actor_user_id: "u1",
+        entity_id: result.transaction_id,
+        entity_type: "SALES_TRANSACTION",
+        sync_status: "PENDING",
+      });
+      expect(aggregate.audit_events[0]?.correlation_id).toBe(
+        aggregate.transaction.correlation_id,
+      );
+
+      const outbox = await db.sync.getOutboxCommand("cmd-canonical");
+      expect(outbox).not.toBeNull();
+      const payload = JSON.parse(outbox!.payload);
+      expect(Object.keys(payload).sort()).toEqual([
+        "audit_events",
+        "cash_movements",
+        "items",
+        "payload_version",
+        "payments",
+        "stock_movements",
+        "transaction",
+      ]);
+      expect(payload).toMatchObject({
+        payload_version: 1,
+        transaction: aggregate.transaction,
+        items: aggregate.items,
+        payments: aggregate.payments,
+        stock_movements: aggregate.stock_movements,
+        cash_movements: aggregate.cash_movements,
+        audit_events: aggregate.audit_events,
+      });
+
+      await expect(db.sync.listPendingOutbox("b1")).resolves.toEqual([outbox]);
+      await expect(db.sales.listCompletedTransactions("b1")).resolves.toEqual([
+        aggregate.transaction,
+      ]);
+      await expect(
+        db.audit.getEventsForEntity(
+          "b1",
+          "SALES_TRANSACTION",
+          result.transaction_id,
+        ),
+      ).resolves.toEqual(aggregate.audit_events);
     });
 
     it("IDEM-04..05: handles idempotency precisely", async () => {
@@ -245,6 +327,62 @@ describe("PosSalesManager", () => {
   });
 
   describe("READ-01..03 & IDEM-05 - Immutable Read Boundary & Restart Proof", () => {
+    it("persists tier and promotion snapshots without repricing a completed historical Sale", async () => {
+      Object.assign(cart.lines[0], {
+        base_unit_price: "100.0000",
+        tier_id: "tier-wholesale",
+        tier_code: "WHOLESALE",
+        tier_min_qty: "2",
+        tier_unit_price: "90.0000",
+        promotion_id: "11111111-2222-4333-8444-555555555555",
+        promotion_type: "FIXED_DISCOUNT",
+        promotion_value: "10.0000",
+        promotion_discount: "10.0000",
+        pricing_resolved_at: "2026-08-17T01:00:00Z",
+        pricing_time_status: "TRUSTED",
+        unit_price: "80.0000",
+        line_total: "160.0000",
+      });
+
+      const result = await db.sales.completeSale({
+        auth,
+        device_id: "d1",
+        command_id: "cmd-priced-history",
+        occurred_at: "2026-08-17T01:00:00Z",
+        cart,
+        amount_tendered: "160.0000",
+      });
+      Object.assign(cart.lines[0], {
+        tier_unit_price: "150.0000",
+        promotion_discount: "0",
+        promotion_id: null,
+        promotion_type: null,
+        promotion_value: null,
+        unit_price: "150.0000",
+        line_total: "300.0000",
+      });
+
+      const completed = await db.sales.getCompletedSale(result.transaction_id);
+      expect(completed.transaction).toMatchObject({
+        subtotal: "180",
+        promotion_discount_total: "20",
+        grand_total: "160",
+      });
+      expect(completed.items[0]).toMatchObject({
+        base_unit_price_snapshot: "100",
+        tier_id_snapshot: "tier-wholesale",
+        tier_code_snapshot: "WHOLESALE",
+        tier_min_qty_snapshot: "2",
+        tier_unit_price_snapshot: "90",
+        promotion_id: "11111111-2222-4333-8444-555555555555",
+        promotion_type_snapshot: "FIXED_DISCOUNT",
+        promotion_value_snapshot: "10",
+        promotion_discount_snapshot: "10",
+        final_unit_price_snapshot: "80",
+        line_total: "160",
+      });
+    });
+
     it("returns typed aggregate exact match and deterministic line order, survives restart", async () => {
       cart.lines.push({
         line_key: "k2",
@@ -260,6 +398,17 @@ describe("PosSalesManager", () => {
         price_effective_from: "2026-08-01T00:00:00Z",
         quantity: "1.000000",
         unit_price: "50.0000",
+        base_unit_price: "50.0000",
+        tier_id: "tier-retail-2",
+        tier_code: "RETAIL",
+        tier_min_qty: "1.000000",
+        tier_unit_price: "50.0000",
+        promotion_id: null,
+        promotion_type: null,
+        promotion_value: null,
+        promotion_discount: "0.0000",
+        pricing_resolved_at: "2026-08-17T01:00:00Z",
+        pricing_time_status: "TRUSTED",
         line_total: "50.0000",
         conversion_factor: "12.00000000",
         track_inventory: true
@@ -297,7 +446,7 @@ describe("PosSalesManager", () => {
       expect(aggregate.items[0]!.line_total).toBe("200");
       expect(aggregate.items[0]!.cost_status).toBe("COST_PENDING");
       expect(aggregate.items[0]!.tier_code_snapshot).toBe("RETAIL");
-      expect(aggregate.items[0]!.promotion_discount_snapshot).toBe("0.0000");
+      expect(aggregate.items[0]!.promotion_discount_snapshot).toBe("0");
       expect(aggregate.items[0]!.manual_line_discount_snapshot).toBe("0.0000");
       expect(aggregate.items[0]!.tax_mode_snapshot).toBe("NO_PPN");
       expect(aggregate.items[0]!.tax_amount_snapshot).toBe("0.0000");
@@ -313,6 +462,18 @@ describe("PosSalesManager", () => {
       expect(aggregate.stock_movements).toHaveLength(2);
       const sm1 = aggregate.stock_movements.find(sm => sm.product_id === "p1");
       expect(sm1!.base_quantity_delta).toBe("-2"); // Exact negative base quantity
+
+      expect(aggregate.cash_movements).toHaveLength(1);
+      expect(aggregate.cash_movements[0]).toMatchObject({
+        amount: "250",
+        movement_type: "CASH_SALE",
+        source_id: res.transaction_id,
+      });
+      expect(aggregate.audit_events).toHaveLength(1);
+      expect(aggregate.audit_events[0]).toMatchObject({
+        action: "TRANSACTION_COMPLETED",
+        entity_id: res.transaction_id,
+      });
 
       expect(aggregate.transaction.transaction_number).toMatch(/^TRX-([0-9a-fA-F-]+)$/);
 
@@ -342,11 +503,12 @@ describe("PosSalesManager", () => {
 
       // 10. prove counts remain exactly
       const counts = await getCounts();
-      expect(counts).toEqual({ txCount: 1, itemCount: 2, pmCount: 1, smCount: 2, outCount: 1 });
+      expect(counts).toEqual({ txCount: 1, itemCount: 2, pmCount: 1, smCount: 2, cashCount: 1, auditCount: 1, outCount: 1 });
       
       // pending outbox survives restart check
       const outCount = await (db as any)._database.table("outbox").where({ command_id: "cmd-restart" }).count();
       expect(outCount).toBe(1);
+      await expect(db.sync.listPendingOutbox("b1")).resolves.toHaveLength(1);
     });
   });
 });

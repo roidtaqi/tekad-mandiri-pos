@@ -47,18 +47,7 @@ describeWithPostgres("M12: Legacy ID Map", () => {
     childUrl.pathname = `/${databaseName}`;
     childDatabaseUrl = childUrl.toString();
 
-    const output = /** @type {string[]} */ ([]);
-    const pushOutput = (/** @type {string} */ line) => output.push(line);
-    const result = await applyMigrations({
-      databaseUrl: childDatabaseUrl,
-      
-      writeStdout: pushOutput,
-      writeStderr: pushOutput,
-    });
-    // @ts-ignore
-    if (!result.success && !Array.isArray(result)) {
-      throw new Error(`Migration failed: \n${output.join("\n")}`);
-    }
+    await applyMigrations({ databaseUrl: childDatabaseUrl });
 
     client = new Client({ connectionString: childDatabaseUrl });
     await client.connect();
@@ -82,8 +71,8 @@ describeWithPostgres("M12: Legacy ID Map", () => {
     if (client === undefined) throw new Error("client is not initialized.");
 
     await client.query(`
-      INSERT INTO core.businesses (id, name, status, created_at, updated_at)
-      VALUES ($1, 'Test Business', 'ACTIVE', NOW(), NOW())
+      INSERT INTO core.businesses (id, name, timezone, status, created_at, updated_at)
+      VALUES ($1, 'Test Business', 'Asia/Makassar', 'ACTIVE', NOW(), NOW())
     `, [businessId]);
   });
 

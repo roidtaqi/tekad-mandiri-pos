@@ -1,5 +1,7 @@
 import type { Dexie } from "dexie";
 import type { AuthContextResponse } from "@kastur/contracts";
+import type { LocalAuditEventRecord } from "./audit-store.js";
+import type { LocalCashMovementRecord } from "./cash-manager.js";
 import { 
   parseMoney, 
   parseDecimal, 
@@ -53,6 +55,18 @@ export interface CartLine {
   readonly quantity: string;
   readonly unit_price: string;
   readonly line_total: string;
+  readonly base_unit_price: string;
+  readonly tier_id: string | null;
+  readonly tier_code: string | null;
+  readonly tier_min_qty: string | null;
+  readonly tier_unit_price: string;
+  readonly promotion_id: string | null;
+  readonly promotion_type: "FIXED_PRICE" | "PERCENT_DISCOUNT" | "FIXED_DISCOUNT" | null;
+  readonly promotion_value: string | null;
+  /** Per-unit promotion benefit. */
+  readonly promotion_discount: string;
+  readonly pricing_resolved_at: string;
+  readonly pricing_time_status: "TRUSTED" | "CLOCK_UNTRUSTED";
   
   readonly conversion_factor: string;
   readonly track_inventory: boolean;
@@ -86,7 +100,7 @@ export interface LocalCompletedTransaction {
   readonly shift_id: string;
   readonly transaction_number: string;
   readonly status: "COMPLETED";
-  readonly sync_status: "PENDING";
+  readonly sync_status: "PENDING" | "SYNCED" | "REQUIRES_REVIEW";
   readonly customer_id: string | null;
   readonly subtotal: string;
   readonly promotion_discount_total: string;
@@ -120,10 +134,16 @@ export interface LocalCompletedTransactionItem {
   readonly base_quantity: string;
   readonly price_version_id_snapshot: string;
   readonly price_effective_from_snapshot: string;
+  readonly pricing_resolved_at_snapshot: string;
+  readonly pricing_time_status_snapshot: "TRUSTED" | "CLOCK_UNTRUSTED";
   readonly base_unit_price_snapshot: string;
-  readonly tier_code_snapshot: "RETAIL";
+  readonly tier_id_snapshot: string | null;
+  readonly tier_code_snapshot: string | null;
+  readonly tier_min_qty_snapshot: string | null;
   readonly tier_unit_price_snapshot: string;
   readonly promotion_id: string | null;
+  readonly promotion_type_snapshot: "FIXED_PRICE" | "PERCENT_DISCOUNT" | "FIXED_DISCOUNT" | null;
+  readonly promotion_value_snapshot: string | null;
   readonly promotion_discount_snapshot: string;
   readonly manual_line_discount_snapshot: string;
   readonly transaction_discount_allocation: string;
@@ -181,6 +201,13 @@ export interface NormalizedSaleLine extends CartLine {
   readonly parsed_line_total: MoneyValue;
   readonly parsed_conversion_factor: DecimalValue;
   readonly parsed_base_quantity: QuantityValue;
+  readonly parsed_base_unit_price: MoneyValue;
+  readonly parsed_tier_unit_price: MoneyValue;
+  readonly parsed_tier_min_qty: QuantityValue | null;
+  readonly parsed_promotion_value: DecimalValue | null;
+  readonly parsed_promotion_discount: MoneyValue;
+  readonly parsed_promotion_discount_total: MoneyValue;
+  readonly parsed_tier_line_total: MoneyValue;
 }
 
 export interface CompletedSaleAggregate {
@@ -188,6 +215,18 @@ export interface CompletedSaleAggregate {
   readonly items: readonly LocalCompletedTransactionItem[];
   readonly payments: readonly LocalCompletedPayment[];
   readonly stock_movements: readonly LocalSaleStockMovement[];
+  readonly cash_movements: readonly LocalCashMovementRecord[];
+  readonly audit_events: readonly LocalAuditEventRecord[];
+}
+
+export interface LocalCompleteSaleOutboxPayloadV1 {
+  readonly payload_version: 1;
+  readonly transaction: LocalCompletedTransaction;
+  readonly items: readonly LocalCompletedTransactionItem[];
+  readonly payments: readonly LocalCompletedPayment[];
+  readonly stock_movements: readonly LocalSaleStockMovement[];
+  readonly cash_movements: readonly LocalCashMovementRecord[];
+  readonly audit_events: readonly LocalAuditEventRecord[];
 }
 
 export type SaleFaultPoint =
@@ -195,6 +234,8 @@ export type SaleFaultPoint =
   | "after_items"
   | "after_payment"
   | "after_stock"
+  | "after_cash"
+  | "after_audit"
   | "before_outbox";
 
 const testFaults = new WeakMap<PosSalesManager, SaleFaultPoint>();
@@ -212,7 +253,14 @@ export class PosSalesManager {
 
   async getCompletedSale(transactionId: string): Promise<CompletedSaleAggregate> {
     return this.db.transaction("r", 
-      [this.db.table("transactions"), this.db.table("transaction_items"), this.db.table("payments"), this.db.table("stock_movements")], 
+      [
+        this.db.table("transactions"),
+        this.db.table("transaction_items"),
+        this.db.table("payments"),
+        this.db.table("stock_movements"),
+        this.db.table("cash_movements"),
+        this.db.table("audit_events"),
+      ],
       async () => {
         const transaction = await this.db.table("transactions").get(transactionId);
         if (!transaction || transaction.status !== "COMPLETED") {
@@ -231,14 +279,69 @@ export class PosSalesManager {
           .where({ source_id: transactionId })
           .toArray();
 
+        const cash_movements = await this.db
+          .table<LocalCashMovementRecord>("cash_movements")
+          .where("source_id")
+          .equals(transactionId)
+          .filter((movement) => movement.source_type === "SALE_TRANSACTION")
+          .toArray();
+
+        const audit_events = await this.db
+          .table<LocalAuditEventRecord>("audit_events")
+          .where("[business_id+entity_type+entity_id]")
+          .equals([
+            transaction.business_id,
+            "SALES_TRANSACTION",
+            transactionId,
+          ])
+          .sortBy("occurred_at");
+
         return {
           transaction,
           items,
           payments,
           stock_movements,
+          cash_movements,
+          audit_events,
         };
       }
     );
+  }
+
+  async getCompletedSaleByCommandId(
+    commandId: string,
+  ): Promise<CompletedSaleAggregate> {
+    const transaction = await this.db
+      .table<LocalCompletedTransaction>("transactions")
+      .where("command_id")
+      .equals(commandId)
+      .first();
+
+    if (transaction === undefined) {
+      throw new Error("Transaction not found or not completed");
+    }
+
+    return this.getCompletedSale(transaction.transaction_id);
+  }
+
+  async listCompletedTransactions(
+    businessId: string,
+    limit = 100,
+  ): Promise<readonly LocalCompletedTransaction[]> {
+    if (!Number.isSafeInteger(limit) || limit <= 0) {
+      throw new TypeError("limit must be a positive safe integer.");
+    }
+
+    const transactions = await this.db
+      .table<LocalCompletedTransaction>("transactions")
+      .where("business_id")
+      .equals(businessId)
+      .filter((transaction) => transaction.status === "COMPLETED")
+      .toArray();
+
+    return transactions
+      .sort((left, right) => right.occurred_at.localeCompare(left.occurred_at))
+      .slice(0, limit);
   }
 
   async completeSale(input: CompleteSaleInput): Promise<CompleteSaleResult> {
@@ -284,6 +387,8 @@ export class PosSalesManager {
     }
 
     const normalizedLines: Array<NormalizedSaleLine> = [];
+    let recomputedSubtotal = parseMoney("0");
+    let recomputedPromotionDiscountTotal = parseMoney("0");
     let recomputedGrandTotal = parseMoney("0");
 
     for (const line of cart.lines) {
@@ -314,6 +419,87 @@ export class PosSalesManager {
         throw new CompleteSaleError("Price precision invalid", SALE_NUMERIC_BOUNDARY_INVALID);
       }
 
+      let baseUnitPriceStr: MoneyValue;
+      let tierUnitPriceStr: MoneyValue;
+      let promotionDiscountStr: MoneyValue;
+      try {
+        baseUnitPriceStr = parseMoney(line.base_unit_price);
+        tierUnitPriceStr = parseMoney(line.tier_unit_price);
+        promotionDiscountStr = parseMoney(line.promotion_discount);
+        if (
+          moneyCompare(baseUnitPriceStr, parseMoney("0")) < 0 ||
+          moneyCompare(tierUnitPriceStr, parseMoney("0")) < 0 ||
+          moneyCompare(promotionDiscountStr, parseMoney("0")) < 0 ||
+          moneyCompare(promotionDiscountStr, tierUnitPriceStr) > 0 ||
+          moneySubtract(tierUnitPriceStr, promotionDiscountStr) !== unitPriceStr
+        ) {
+          throw new Error("pricing layer mismatch");
+        }
+      } catch {
+        throw new CompleteSaleError("Cart pricing layers are invalid", SALE_CART_INTEGRITY_INVALID);
+      }
+      if (
+        !fitsPrecisionScale(baseUnitPriceStr, 20, 4) ||
+        !fitsPrecisionScale(tierUnitPriceStr, 20, 4) ||
+        !fitsPrecisionScale(promotionDiscountStr, 20, 4)
+      ) {
+        throw new CompleteSaleError("Pricing snapshot precision invalid", SALE_NUMERIC_BOUNDARY_INVALID);
+      }
+
+      const hasTierIdentity =
+        line.tier_id !== null || line.tier_code !== null || line.tier_min_qty !== null;
+      if (
+        hasTierIdentity &&
+        (line.tier_id === null || line.tier_code === null || line.tier_min_qty === null)
+      ) {
+        throw new CompleteSaleError("Tier snapshot is incomplete", SALE_CART_INTEGRITY_INVALID);
+      }
+      let tierMinQtyStr: QuantityValue | null = null;
+      if (line.tier_min_qty !== null) {
+        try {
+          tierMinQtyStr = parseQuantity(line.tier_min_qty);
+          if (
+            quantityCompare(tierMinQtyStr, parseQuantity("0")) <= 0 ||
+            quantityCompare(tierMinQtyStr, quantityStr) > 0 ||
+            !fitsPrecisionScale(tierMinQtyStr, 20, 6)
+          ) {
+            throw new Error("invalid tier minimum");
+          }
+        } catch {
+          throw new CompleteSaleError("Tier snapshot is invalid", SALE_CART_INTEGRITY_INVALID);
+        }
+      }
+
+      const hasPromotion = line.promotion_id !== null;
+      if (
+        hasPromotion !== (line.promotion_type !== null) ||
+        hasPromotion !== (line.promotion_value !== null) ||
+        (!hasPromotion && moneyCompare(promotionDiscountStr, parseMoney("0")) !== 0)
+      ) {
+        throw new CompleteSaleError("Promotion snapshot is inconsistent", SALE_CART_INTEGRITY_INVALID);
+      }
+      let promotionValueStr: DecimalValue | null = null;
+      if (line.promotion_value !== null) {
+        try {
+          promotionValueStr = parseDecimal(line.promotion_value);
+          if (
+            decimalCompare(promotionValueStr, parseDecimal("0")) < 0 ||
+            !fitsPrecisionScale(promotionValueStr, 20, 4)
+          ) {
+            throw new Error("invalid promotion value");
+          }
+        } catch {
+          throw new CompleteSaleError("Promotion value is invalid", SALE_CART_INTEGRITY_INVALID);
+        }
+      }
+      if (
+        !Number.isFinite(new Date(line.pricing_resolved_at).getTime()) ||
+        (line.pricing_time_status !== "TRUSTED" &&
+          line.pricing_time_status !== "CLOCK_UNTRUSTED")
+      ) {
+        throw new CompleteSaleError("Pricing time snapshot is invalid", SALE_CART_INTEGRITY_INVALID);
+      }
+
       let conversionFactorStr: DecimalValue;
       try {
         conversionFactorStr = parseDecimal(line.conversion_factor);
@@ -340,6 +526,16 @@ export class PosSalesManager {
         throw new CompleteSaleError("Base quantity precision invalid", SALE_NUMERIC_BOUNDARY_INVALID);
       }
 
+      const tierLineTotal = multiplyMoneyByQuantity(tierUnitPriceStr, quantityStr);
+      const promotionDiscountTotal = multiplyMoneyByQuantity(
+        promotionDiscountStr,
+        quantityStr,
+      );
+      recomputedSubtotal = moneyAdd(recomputedSubtotal, tierLineTotal);
+      recomputedPromotionDiscountTotal = moneyAdd(
+        recomputedPromotionDiscountTotal,
+        promotionDiscountTotal,
+      );
       recomputedGrandTotal = moneyAdd(recomputedGrandTotal, expectedLineTotal);
       if (!fitsPrecisionScale(recomputedGrandTotal, 20, 4)) {
         throw new CompleteSaleError("Grand total precision invalid", SALE_NUMERIC_BOUNDARY_INVALID);
@@ -352,6 +548,13 @@ export class PosSalesManager {
         parsed_line_total: expectedLineTotal,
         parsed_conversion_factor: conversionFactorStr,
         parsed_base_quantity: baseQuantityStr,
+        parsed_base_unit_price: baseUnitPriceStr,
+        parsed_tier_unit_price: tierUnitPriceStr,
+        parsed_tier_min_qty: tierMinQtyStr,
+        parsed_promotion_value: promotionValueStr,
+        parsed_promotion_discount: promotionDiscountStr,
+        parsed_promotion_discount_total: promotionDiscountTotal,
+        parsed_tier_line_total: tierLineTotal,
       });
     }
 
@@ -399,6 +602,17 @@ export class PosSalesManager {
         sku: l.sku,
         quantity: l.parsed_quantity,
         unit_price: l.parsed_unit_price,
+        base_unit_price: l.parsed_base_unit_price,
+        tier_id: l.tier_id,
+        tier_code: l.tier_code,
+        tier_min_qty: l.parsed_tier_min_qty,
+        tier_unit_price: l.parsed_tier_unit_price,
+        promotion_id: l.promotion_id,
+        promotion_type: l.promotion_type,
+        promotion_value: l.parsed_promotion_value,
+        promotion_discount: l.parsed_promotion_discount,
+        pricing_resolved_at: l.pricing_resolved_at,
+        pricing_time_status: l.pricing_time_status,
         line_total: l.parsed_line_total,
         conversion_factor: l.parsed_conversion_factor,
         track_inventory: l.track_inventory,
@@ -414,8 +628,17 @@ export class PosSalesManager {
     const locationId = auth.default_location_id;
     const cashierUserId = auth.user.id;
 
-    return this.db.transaction("rw", 
-      [this.db.table("shifts"), this.db.table("transactions"), this.db.table("transaction_items"), this.db.table("payments"), this.db.table("stock_movements"), this.db.table("outbox")], 
+    return this.db.transaction("rw",
+      [
+        this.db.table("shifts"),
+        this.db.table("transactions"),
+        this.db.table("transaction_items"),
+        this.db.table("payments"),
+        this.db.table("stock_movements"),
+        this.db.table("cash_movements"),
+        this.db.table("audit_events"),
+        this.db.table("outbox"),
+      ],
       async () => {
         // 3. Check existing command_id.
         const existingOutbox = await this.db.table("outbox").where({ command_id }).first();
@@ -457,7 +680,7 @@ export class PosSalesManager {
         const correlationId = crypto.randomUUID();
         const transactionNumber = `TRX-${transactionId}`;
 
-        const transaction = {
+        const transaction: LocalCompletedTransaction = {
           transaction_id: transactionId,
           command_id,
           business_id: businessId,
@@ -469,8 +692,8 @@ export class PosSalesManager {
           status: "COMPLETED",
           sync_status: "PENDING",
           customer_id: null,
-          subtotal: recomputedGrandTotal,
-          promotion_discount_total: "0.0000",
+          subtotal: recomputedSubtotal,
+          promotion_discount_total: recomputedPromotionDiscountTotal,
           line_discount_total: "0.0000",
           transaction_discount_total: "0.0000",
           tax_total: "0.0000",
@@ -489,12 +712,12 @@ export class PosSalesManager {
         if (testFaults.get(this) === "after_transaction") throw new Error("Fault: after_transaction");
 
         let lineIndex = 0;
-        const transactionItems = [];
-        const stockMovements = [];
+        const transactionItems: LocalCompletedTransactionItem[] = [];
+        const stockMovements: LocalSaleStockMovement[] = [];
         for (const line of normalizedLines) {
           const transactionItemId = crypto.randomUUID();
           
-          const transactionItem = {
+          const transactionItem: LocalCompletedTransactionItem = {
             transaction_item_id: transactionItemId,
             transaction_id: transactionId,
             line_index: lineIndex++,
@@ -509,11 +732,17 @@ export class PosSalesManager {
             base_quantity: line.parsed_base_quantity,
             price_version_id_snapshot: line.price_version_id,
             price_effective_from_snapshot: line.price_effective_from,
-            base_unit_price_snapshot: line.parsed_unit_price,
-            tier_code_snapshot: "RETAIL",
-            tier_unit_price_snapshot: line.parsed_unit_price,
-            promotion_id: null,
-            promotion_discount_snapshot: "0.0000",
+            pricing_resolved_at_snapshot: line.pricing_resolved_at,
+            pricing_time_status_snapshot: line.pricing_time_status,
+            base_unit_price_snapshot: line.parsed_base_unit_price,
+            tier_id_snapshot: line.tier_id,
+            tier_code_snapshot: line.tier_code,
+            tier_min_qty_snapshot: line.parsed_tier_min_qty,
+            tier_unit_price_snapshot: line.parsed_tier_unit_price,
+            promotion_id: line.promotion_id,
+            promotion_type_snapshot: line.promotion_type,
+            promotion_value_snapshot: line.parsed_promotion_value,
+            promotion_discount_snapshot: line.parsed_promotion_discount,
             manual_line_discount_snapshot: "0.0000",
             transaction_discount_allocation: "0.0000",
             final_unit_price_snapshot: line.parsed_unit_price,
@@ -553,7 +782,7 @@ export class PosSalesManager {
         await this.db.table("transaction_items").bulkAdd(transactionItems);
         if (testFaults.get(this) === "after_items") throw new Error("Fault: after_items");
 
-        const payment = {
+        const payment: LocalCompletedPayment = {
           payment_id: crypto.randomUUID(),
           business_id: businessId,
           transaction_id: transactionId,
@@ -578,12 +807,64 @@ export class PosSalesManager {
         }
         if (testFaults.get(this) === "after_stock") throw new Error("Fault: after_stock");
 
-        const outboxPayload = JSON.stringify({
+        const cashMovement: LocalCashMovementRecord = {
+          id: crypto.randomUUID(),
+          shift_id: activeShift.shift_id,
+          business_id: businessId,
+          location_id: locationId,
+          movement_type: "CASH_SALE",
+          direction: "IN",
+          amount: paymentAmountStr,
+          source_type: "SALE_TRANSACTION",
+          source_id: transactionId,
+          reason_code: null,
+          notes: null,
+          occurred_at,
+          actor_user_id: cashierUserId,
+          correlation_id: correlationId,
+        };
+        await this.db.table("cash_movements").add(cashMovement);
+        if (testFaults.get(this) === "after_cash") throw new Error("Fault: after_cash");
+
+        const auditEvent: LocalAuditEventRecord = {
+          id: crypto.randomUUID(),
+          business_id: businessId,
+          location_id: locationId,
+          actor_type: "USER",
+          actor_user_id: cashierUserId,
+          actor_role_snapshot: auth.primary_role ?? null,
+          action: "TRANSACTION_COMPLETED",
+          entity_type: "SALES_TRANSACTION",
+          entity_id: transactionId,
+          occurred_at,
+          recorded_at: new Date().toISOString(),
+          device_id,
+          session_id: null,
+          reason: null,
+          before_data: null,
+          after_data: {
+            status: transaction.status,
+            transaction_number: transaction.transaction_number,
+            grand_total: transaction.grand_total,
+            payment_method: payment.method_code,
+          },
+          correlation_id: correlationId,
+          authorization_version: auth.authorization_version,
+          sync_status: "PENDING",
+        };
+        await this.db.table("audit_events").add(auditEvent);
+        if (testFaults.get(this) === "after_audit") throw new Error("Fault: after_audit");
+
+        const canonicalPayload: LocalCompleteSaleOutboxPayloadV1 = {
+          payload_version: 1,
           transaction,
           items: transactionItems,
-          payment,
-          stockMovements
-        });
+          payments: [payment],
+          stock_movements: stockMovements,
+          cash_movements: [cashMovement],
+          audit_events: [auditEvent],
+        };
+        const outboxPayload = JSON.stringify(canonicalPayload);
 
         const outboxRecord = {
           outbox_id: crypto.randomUUID(),
@@ -595,6 +876,9 @@ export class PosSalesManager {
           location_id: locationId,
           device_id,
           authorization_version: auth.authorization_version,
+          ...(auth.offline_authorization === undefined
+            ? {}
+            : { offline_authorization: auth.offline_authorization }),
           correlation_id: correlationId,
           occurred_at,
           payload: outboxPayload,

@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "business_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  "default_location_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+  "actor_user_id": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+  "cutover_at": "2026-08-22T16:00:00.000Z",
+  "default_track_inventory": true,
+  "fallback_category_name": "Belum Diklasifikasi",
+  "unit_defaults": {
+    "can_sell": true,
+    "can_purchase": true,
+    "allow_decimal_qty": false
+  },
+  "opening_price_tax": {
+    "mode": "NO_PPN",
+    "rate": "0"
+  },
+  "sources": [
+    { "id": "inventory-main", "type": "inventory-pricing-json", "path": "inventory-pricing.json" },
+    { "id": "pos-main", "type": "integrated-pos-json", "path": "integrated-pos.json" },
+    { "id": "catalog-sheet", "type": "catalog-csv", "path": "catalog.csv" }
+  ],
+  "known_relations": [],
+  "location_map": [
+    {
+      "source_id": "pos-main",
+      "legacy_location_id": "legacy-outlet-1",
+      "location_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+    }
+  ],
+  "opening_authority": {
+    "stock_source_id": "pos-main",
+    "cost_source_id": "inventory-main",
+    "price_source_id": "inventory-main"
+  }
+}

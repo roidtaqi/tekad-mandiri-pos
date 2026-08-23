@@ -1,17 +1,320 @@
-.app-shell {
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--ks-color-bg-page);
+}
+
+.session-screen {
   display: grid;
   min-height: 100vh;
   place-content: center;
   padding: var(--ks-space-6);
-  text-align: center;
 }
 
-.app-shell__surface {
-  width: min(100%, 34rem);
+.session-card {
+  width: min(100%, 30rem);
 }
 
-@media (max-width: 40rem) {
-  .app-shell {
-    padding-inline: var(--ks-space-4);
+.backoffice-layout {
+  display: grid;
+  grid-template-columns: 15rem minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.backoffice-sidebar {
+  position: sticky;
+  top: 0;
+  display: flex;
+  height: 100vh;
+  flex-direction: column;
+  gap: var(--ks-space-5);
+  overflow-y: auto;
+  border-right: 1px solid var(--ks-color-border-default);
+  background: var(--ks-color-bg-surface);
+  padding: var(--ks-space-5) var(--ks-space-4);
+}
+
+.backoffice-brand {
+  display: flex;
+  flex-direction: column;
+  color: var(--ks-color-text-primary);
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.2;
+  text-decoration: none;
+}
+
+.backoffice-navigation {
+  min-height: 0;
+  flex: 1;
+}
+
+.backoffice-navigation .ks-sidebar-list {
+  display: flex;
+  margin: 0;
+  flex-direction: column;
+  gap: var(--ks-space-1);
+  padding: 0;
+  list-style: none;
+}
+
+.backoffice-navigation .ks-sidebar-link {
+  display: flex;
+  border-radius: var(--ks-radius-md);
+  color: var(--ks-color-text-secondary);
+  padding: var(--ks-space-2) var(--ks-space-3);
+  text-decoration: none;
+}
+
+.backoffice-navigation .ks-sidebar-link:hover {
+  background: var(--ks-color-bg-subtle);
+  color: var(--ks-color-text-primary);
+}
+
+.backoffice-navigation .ks-sidebar-link[data-active="true"] {
+  background: var(--ks-color-accent-subtle);
+  color: var(--ks-color-accent-strong);
+  font-weight: 600;
+}
+
+.operator-summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ks-space-1);
+  border-top: 1px solid var(--ks-color-border-default);
+  padding-top: var(--ks-space-4);
+}
+
+.operator-summary .ks-button {
+  margin-top: var(--ks-space-2);
+}
+
+.backoffice-main {
+  min-width: 0;
+  padding: var(--ks-space-8);
+}
+
+.backoffice-main > * {
+  width: min(100%, 90rem);
+  margin-inline: auto;
+}
+
+.resource-state {
+  display: grid;
+  min-height: 12rem;
+  place-content: center;
+}
+
+.resource-table {
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.resource-technical-id {
+  display: inline-block;
+  max-width: 15rem;
+  overflow-wrap: anywhere;
+  color: var(--ks-color-text-secondary);
+  font-size: 0.75rem;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--ks-space-3);
+}
+
+.summary-value {
+  font-size: 1.35rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.attention-list {
+  display: grid;
+  margin: 0;
+  gap: var(--ks-space-3);
+  padding: 0;
+  list-style: none;
+}
+
+.attention-list li {
+  display: grid;
+  gap: var(--ks-space-1);
+  border-bottom: 1px solid var(--ks-color-border-default);
+  padding-bottom: var(--ks-space-3);
+}
+
+.attention-list li:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: var(--ks-space-4);
+}
+
+.settings-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.settings-link .ks-surface {
+  height: 100%;
+}
+
+.settings-link:hover .ks-surface {
+  border-color: var(--ks-color-border-strong);
+}
+
+.text-link {
+  color: var(--ks-color-text-link);
+  font-weight: 600;
+}
+
+.operation-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ks-space-2);
+}
+
+.operation-link {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--ks-radius-md);
+  background: var(--ks-color-accent-subtle);
+  color: var(--ks-color-accent-strong);
+  font-weight: 600;
+  padding: var(--ks-space-2) var(--ks-space-3);
+  text-decoration: none;
+}
+
+.operation-link:hover {
+  text-decoration: underline;
+}
+
+.operation-link--secondary {
+  background: var(--ks-color-bg-subtle);
+  color: var(--ks-color-text-secondary);
+}
+
+.operation-heading,
+.operation-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ks-space-4);
+}
+
+.operation-form {
+  width: 100%;
+}
+
+.operation-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: var(--ks-space-3);
+}
+
+.operation-line {
+  border: 1px solid var(--ks-color-border-default);
+  background: var(--ks-color-bg-subtle);
+}
+
+.operation-tier {
+  border-left: 3px solid var(--ks-color-border-strong);
+  padding-left: var(--ks-space-3);
+}
+
+.technical-id {
+  display: grid;
+  min-width: 0;
+  gap: var(--ks-space-1);
+}
+
+.technical-id code {
+  overflow-wrap: anywhere;
+  color: var(--ks-color-text-secondary);
+  font-size: 0.8rem;
+}
+
+@media (max-width: 52rem) {
+  .backoffice-layout {
+    display: block;
+  }
+
+  .backoffice-sidebar {
+    position: static;
+    display: grid;
+    height: auto;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    overflow: visible;
+    border-right: 0;
+    border-bottom: 1px solid var(--ks-color-border-default);
+    padding: var(--ks-space-3) var(--ks-space-4);
+  }
+
+  .backoffice-navigation {
+    overflow-x: auto;
+  }
+
+  .backoffice-navigation .ks-sidebar-list {
+    flex-direction: row;
+    white-space: nowrap;
+  }
+
+  .operator-summary {
+    min-width: 8rem;
+    border-top: 0;
+    padding-top: 0;
+  }
+
+  .operator-summary > .ks-text:not(:first-child) {
+    display: none;
+  }
+
+  .operator-summary .ks-button {
+    margin-top: var(--ks-space-1);
+  }
+
+  .backoffice-main {
+    padding: var(--ks-space-5) var(--ks-space-4);
+  }
+
+  .operation-heading,
+  .operation-section-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 38rem) {
+  .session-screen {
+    padding: var(--ks-space-4);
+  }
+
+  .backoffice-sidebar {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .backoffice-navigation {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .operator-summary {
+    min-width: 0;
+    text-align: right;
+  }
+
+  .operator-summary > .ks-text {
+    display: none;
   }
 }

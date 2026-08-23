@@ -1,9 +1,21 @@
 import type { CompletedSaleAggregate } from "@kastur/local-db";
+import {
+  moneyAdd,
+  multiplyMoneyByQuantity,
+  parseMoney,
+  parseQuantity,
+} from "@kastur/numeric";
 import type { ReceiptProps } from "@kastur/ui";
 
 export function mapTransactionToReceipt(
   transaction: CompletedSaleAggregate,
-  storeContext: { name: string; address: string; phone: string; footer: string },
+  storeContext: {
+    name: string;
+    address: string;
+    phone: string;
+    footer: string;
+    cashierName?: string;
+  },
   width: "80mm" | "58mm" = "58mm"
 ): ReceiptProps {
   // We don't expose cost or margin
@@ -11,8 +23,17 @@ export function mapTransactionToReceipt(
     name: item.product_name_snapshot,
     unitName: item.unit_name_snapshot,
     qty: item.quantity,
-    price: item.base_unit_price_snapshot,
-    discount: item.transaction_discount_allocation, // Or line manual discount
+    price: item.tier_unit_price_snapshot,
+    discount: moneyAdd(
+      moneyAdd(
+        multiplyMoneyByQuantity(
+          parseMoney(item.promotion_discount_snapshot),
+          parseQuantity(item.quantity),
+        ),
+        parseMoney(item.manual_line_discount_snapshot),
+      ),
+      parseMoney(item.transaction_discount_allocation),
+    ),
     subtotal: item.line_total,
   }));
 
@@ -21,13 +42,17 @@ export function mapTransactionToReceipt(
     amount: p.amount,
   }));
 
-  // Aggregate discounts if we have transaction-level discounts
-  // In M2-007 there is discount_allocation but we'll use a placeholder for total discount if needed
-  const discountTotal = "0"; // Placeholder until M7 promotions
+  const discountTotal = moneyAdd(
+    moneyAdd(
+      parseMoney(transaction.transaction.promotion_discount_total),
+      parseMoney(transaction.transaction.line_discount_total),
+    ),
+    parseMoney(transaction.transaction.transaction_discount_total),
+  );
 
   return {
-    transactionId: (transaction.transaction.transaction_id.split("-")[0] ?? "").toUpperCase(), // Short visual ID
-    cashierName: transaction.transaction.created_by, // We should lookup name, but for now ID or if we have it in auth
+    transactionId: transaction.transaction.transaction_number,
+    cashierName: storeContext.cashierName ?? transaction.transaction.created_by,
     createdAt: transaction.transaction.occurred_at,
     storeName: storeContext.name,
     storeAddress: storeContext.address,
@@ -38,8 +63,8 @@ export function mapTransactionToReceipt(
     discountTotal,
     taxTotal: transaction.transaction.tax_total,
     total: transaction.transaction.grand_total, // M2 has no tax/discount separate total yet, it's all in amount_total
-    paid: transaction.transaction.total_paid || transaction.transaction.grand_total,
-    change: transaction.transaction.change_amount || "0",
+    paid: transaction.payments[0]?.amount_tendered ?? transaction.transaction.total_paid,
+    change: transaction.transaction.change_amount,
     payments,
     width,
   };

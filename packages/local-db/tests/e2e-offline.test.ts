@@ -104,6 +104,17 @@ describe("E2E Offline Restart", () => {
             price_effective_from: "2026-08-01T00:00:00Z",
             quantity: "2.000000",
             unit_price: "15000.0000",
+            base_unit_price: "15000.0000",
+            tier_id: "tier-retail",
+            tier_code: "RETAIL",
+            tier_min_qty: "1.000000",
+            tier_unit_price: "15000.0000",
+            promotion_id: null,
+            promotion_type: null,
+            promotion_value: null,
+            promotion_discount: "0.0000",
+            pricing_resolved_at: "2026-08-17T01:00:00Z",
+            pricing_time_status: "TRUSTED",
             line_total: "30000.0000",
             conversion_factor: "1.000000",
             track_inventory: true
@@ -135,7 +146,27 @@ describe("E2E Offline Restart", () => {
     expect(recoveredTx?.transaction.grand_total).toBe("30000");
 
     expect(recoveredTx?.items.length).toBe(1);
-    const outboxCount = await (newDb as any)._database.table("outbox").where({ command_id: txId }).count();
-    expect(outboxCount).toBeGreaterThan(0);
+    expect(recoveredTx?.cash_movements).toHaveLength(1);
+    expect(recoveredTx?.cash_movements[0]).toMatchObject({
+      amount: "30000",
+      movement_type: "CASH_SALE",
+      source_id: res.transaction_id,
+    });
+    expect(recoveredTx?.audit_events).toHaveLength(1);
+    expect(recoveredTx?.audit_events[0]).toMatchObject({
+      action: "TRANSACTION_COMPLETED",
+      entity_id: res.transaction_id,
+    });
+
+    const pendingOutbox = await newDb.sync.listPendingOutbox("biz-1");
+    expect(pendingOutbox.some(({ command_id }) => command_id === txId)).toBe(true);
+    const saleOutbox = await newDb.sync.getOutboxCommand(txId);
+    expect(saleOutbox).not.toBeNull();
+    expect(JSON.parse(saleOutbox!.payload)).toMatchObject({
+      payload_version: 1,
+      transaction: { transaction_id: res.transaction_id },
+      cash_movements: [{ source_id: res.transaction_id }],
+      audit_events: [{ entity_id: res.transaction_id }],
+    });
   });
 });

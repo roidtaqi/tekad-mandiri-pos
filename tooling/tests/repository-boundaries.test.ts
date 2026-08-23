@@ -506,7 +506,7 @@ describe("TypeScript runtime boundaries", () => {
     }
   });
 
-  it("uses generated Worker types without enabling Node compatibility", async () => {
+  it("uses generated Worker types with the reviewed PostgreSQL compatibility flag", async () => {
     const wranglerConfig = await readJson<{
       compatibility_date?: string;
       compatibility_flags?: string[];
@@ -522,10 +522,11 @@ describe("TypeScript runtime boundaries", () => {
     expect(wranglerConfig).toEqual({
       $schema: "../../node_modules/wrangler/config-schema.json",
       compatibility_date: "2026-08-16",
+      compatibility_flags: ["nodejs_compat"],
       main: "src/index.ts",
       name: "kastur-api",
     });
-    expect(wranglerConfig.compatibility_flags).toBeUndefined();
+    expect(wranglerConfig.compatibility_flags).toEqual(["nodejs_compat"]);
     expect(apiConfig.options.types).toEqual(["./worker-configuration.d.ts"]);
     expect(generatedTypes).toMatch(
       /Runtime types generated with workerd@\S+ 2026-08-16/u,
@@ -547,12 +548,19 @@ describe("TypeScript runtime boundaries", () => {
         }
       }
 
-      for (const match of sourceText.matchAll(
-        /\b(?:Buffer|clearImmediate|global|process|setImmediate)\b/gu,
-      )) {
-        violations.push(
-          `${path.relative(repositoryRoot, fileName)} uses ${match[0]}`,
-        );
+      const identifiers = getIdentifierNames(fileName, sourceText);
+      for (const globalName of [
+        "Buffer",
+        "clearImmediate",
+        "global",
+        "process",
+        "setImmediate",
+      ]) {
+        if (identifiers.has(globalName)) {
+          violations.push(
+            `${path.relative(repositoryRoot, fileName)} uses ${globalName}`,
+          );
+        }
       }
     }
 
@@ -805,7 +813,7 @@ describe("workspace package boundaries", () => {
     expect(violations).toEqual([]);
   });
 
-  it("keeps PostgreSQL and migration tooling out of application runtime workspaces", async () => {
+  it("keeps PostgreSQL behind the reviewed API adapter and out of browser workspaces", async () => {
     const applicationRuntimeWorkspaces = workspaces.filter(({ name }) =>
       [
         "@kastur/api",
@@ -830,10 +838,12 @@ describe("workspace package boundaries", () => {
         ...manifest.optionalDependencies,
         ...manifest.peerDependencies,
       };
-      const forbiddenDependencies = ["node-pg-migrate", "pg"];
+      const forbiddenDependencies = ["node-pg-migrate"];
 
       if (workspace.name !== "@kastur/api") {
-        forbiddenDependencies.push("wrangler");
+        forbiddenDependencies.push("pg", "wrangler");
+      } else if (dependencies.pg !== "8.23.0") {
+        violations.push("apps/api must pin the reviewed pg runtime version 8.23.0");
       }
 
       for (const forbiddenDependency of forbiddenDependencies) {
@@ -849,7 +859,9 @@ describe("workspace package boundaries", () => {
 
         for (const specifier of getModuleSpecifiers(fileName, sourceText)) {
           if (
-            specifier === "pg" ||
+            (specifier === "pg" &&
+              (workspace.name !== "@kastur/api" ||
+                path.basename(fileName) !== "database.ts")) ||
             specifier === "node-pg-migrate" ||
             specifier.includes("database/scripts")
           ) {

@@ -5,6 +5,8 @@ export const AuthContext = createContext<AuthContextResponse | null>(null);
 
 export function useAuthContext() {
   const ctx = useContext(AuthContext);
-  // For safety in untested environments, we can return null if not provided
+  if (ctx === null) {
+    throw new Error("AuthContext is not available outside the Back Office runtime.");
+  }
   return ctx;
 }

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "build": "tsc -p tsconfig.json --noEmit && wrangler deploy --dry-run --outfile dist/worker.js --config wrangler.jsonc",
     "dev": "wrangler dev --local --config wrangler.jsonc",
     "test": "vitest run --config ../../vitest.config.ts --project api",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
@@ -12,6 +12,9 @@
     "types:generate": "wrangler types worker-configuration.d.ts --config wrangler.jsonc"
   },
   "dependencies": {
-    "@kastur/contracts": "*"
+    "@kastur/contracts": "*",
+    "@kastur/domain": "*",
+    "@kastur/numeric": "^0.0.0",
+    "pg": "8.23.0"
   }
 }

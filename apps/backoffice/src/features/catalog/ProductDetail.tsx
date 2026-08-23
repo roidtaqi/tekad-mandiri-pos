@@ -77,10 +77,7 @@ export default function ProductDetail() {
 
       <Surface elevation={1} padding="spacious">
         <Stack gap={4}>
-          <Inline justify="between" align="center">
-            <Heading level={3} size="h3">Unit & Barcode</Heading>
-            <Button variant="secondary" disabled>Tambah Unit</Button>
-          </Inline>
+          <Heading level={3} size="h3">Unit & Barcode</Heading>
           
           {!hasBaseUnit && (
             <Text tone="muted">Unit dasar belum dikonfigurasi</Text>
@@ -138,18 +135,6 @@ export default function ProductDetail() {
         </Stack>
       </Surface>
 
-      <Surface elevation={1} padding="spacious">
-        <Stack gap={2}>
-          <Heading level={3} size="h3">Harga</Heading>
-          <Text tone="muted">Belum tersedia pada tahap ini</Text>
-        </Stack>
-      </Surface>
-      <Surface elevation={1} padding="spacious">
-        <Stack gap={2}>
-          <Heading level={3} size="h3">Stok</Heading>
-          <Text tone="muted">Belum tersedia pada tahap ini</Text>
-        </Stack>
-      </Surface>
     </Stack>
   );
 }

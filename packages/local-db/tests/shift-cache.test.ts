@@ -15,6 +15,7 @@ import {
   INVALID_SHIFT_CONTEXT,
   INVALID_OPENING_CASH,
   ACTIVE_SHIFT_ALREADY_EXISTS,
+  _setShiftOpenFaultForTest,
   buildActiveContextKey,
   type OpenShiftInput,
 } from "../src/shift-cache";
@@ -76,6 +77,52 @@ test("SHIFT-01: valid offline context opens one OPEN shift with PENDING sync sta
   expect(result.opening_cash).toBe("500000.0000");
   expect(result.opened_at).toBe("2026-08-17T08:00:00Z");
   expect(result.authorization_version).toBe(1);
+
+  await expect(db.cash.getMovementsForShift(result.shift_id)).resolves.toEqual([
+    expect.objectContaining({
+      amount: "500000.0000",
+      movement_type: "OPENING_BALANCE",
+      source_id: result.shift_id,
+      source_type: "SHIFT",
+    }),
+  ]);
+  await expect(
+    db.audit.getEventsForEntity("biz-1", "CASH_SHIFT", result.shift_id),
+  ).resolves.toEqual([
+    expect.objectContaining({
+      action: "SHIFT_OPENED",
+      entity_id: result.shift_id,
+    }),
+  ]);
+  const outbox = await db.sync.getOutboxCommand(result.shift_id);
+  expect(outbox).not.toBeNull();
+  expect(JSON.parse(outbox!.payload)).toMatchObject({
+    payload_version: 1,
+    shift: { shift_id: result.shift_id },
+    cash_movements: [{ source_id: result.shift_id }],
+    audit_events: [{ entity_id: result.shift_id }],
+  });
+});
+
+test.each([
+  "after_shift",
+  "after_cash",
+  "after_audit",
+  "before_outbox",
+] as const)("SHIFT-01 atomic rollback at %s leaves no local facts", async (fault) => {
+  _setShiftOpenFaultForTest(db.shifts, fault);
+  await expect(db.shifts.openShift(makeInput())).rejects.toThrow(`Fault: ${fault}`);
+  _setShiftOpenFaultForTest(db.shifts, undefined);
+
+  const rawDatabase = (db as any)._database;
+  await expect(
+    Promise.all([
+      rawDatabase.table("shifts").count(),
+      rawDatabase.table("cash_movements").count(),
+      rawDatabase.table("audit_events").count(),
+      rawDatabase.table("outbox").count(),
+    ]),
+  ).resolves.toEqual([0, 0, 0, 0]);
 });
 
 // ─── SHIFT-02: shift_id is collision-resistant ────────────────────────
@@ -302,6 +349,11 @@ test("RST-01: restart preserves all Shift Open fields exactly", async () => {
   expect(restored!.authorization_version).toBe(1);
   expect(restored!.status).toBe("OPEN");
   expect(restored!.sync_status).toBe("PENDING");
+  await expect(db.cash.getMovementsForShift(result.shift_id)).resolves.toHaveLength(1);
+  await expect(
+    db.audit.getEventsForEntity("biz-1", "CASH_SHIFT", result.shift_id),
+  ).resolves.toHaveLength(1);
+  await expect(db.sync.getOutboxCommand(result.shift_id)).resolves.not.toBeNull();
 });
 
 // ─── LOCAL-03: persists through close/reopen ──────────────────────────

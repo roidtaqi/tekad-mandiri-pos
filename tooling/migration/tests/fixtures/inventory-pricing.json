@@ -1,0 +1,64 @@
+{
+  "exportedAt": "2026-08-20T00:00:00.000Z",
+  "categories": [{ "id": 1, "name": "Minuman", "isActive": true }],
+  "brands": [{ "id": 2, "name": "Kastur Test", "isActive": true }],
+  "suppliers": [{ "id": 3, "name": "Supplier Test", "phone": "0800", "isActive": true }],
+  "products": [
+    {
+      "id": "inv-product-1",
+      "sku": "SKU-001",
+      "name": "Air Uji",
+      "categoryId": 1,
+      "brandId": 2,
+      "supplierId": 3,
+      "barcode": "899000000001",
+      "isActive": true
+    },
+    {
+      "id": "inv-product-2",
+      "sku": "SKU-002",
+      "name": "Teh Uji",
+      "categoryId": 1,
+      "brandId": 2,
+      "supplierId": 3,
+      "barcode": "899000000002",
+      "isActive": true
+    }
+  ],
+  "productUnits": [
+    {
+      "id": "inv-unit-1",
+      "productId": "inv-product-1",
+      "unitName": "pcs",
+      "conversionToBase": 1,
+      "manualCost": 12.34000001,
+      "activeSellingPrice": 20.2500
+    },
+    {
+      "id": "inv-unit-2",
+      "productId": "inv-product-2",
+      "unitName": "pcs",
+      "conversionToBase": 1,
+      "manualCost": 7.125,
+      "activeSellingPrice": 10.5000
+    }
+  ],
+  "productUnitCostHistories": [
+    {
+      "id": "cost-1",
+      "productId": "inv-product-1",
+      "productUnitId": "inv-unit-1",
+      "finalCost": 12.34000001,
+      "effectiveDate": "2026-08-01"
+    },
+    {
+      "id": "cost-2",
+      "productId": "inv-product-2",
+      "productUnitId": "inv-unit-2",
+      "finalCost": 7.125,
+      "effectiveDate": "2026-08-01"
+    }
+  ],
+  "priceCalculations": [],
+  "priceHistories": []
+}

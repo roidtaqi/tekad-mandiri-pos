@@ -1,33 +1,51 @@
-import { Route, Routes } from "react-router-dom";
+import { Heading, Spinner } from "@kastur/ui";
 
-import { Heading, Stack, Surface, Text } from "@kastur/ui";
+import { SessionEntry } from "./auth/SessionEntry.js";
+import { PosRoutes } from "./routes/PosRoutes.js";
+import {
+  PosRuntimeProvider,
+  type PosRuntimeDependencies,
+  usePosRuntime,
+} from "./runtime/PosRuntimeProvider.js";
 
-function PlaceholderShell() {
+function PosApplication() {
+  const runtime = usePosRuntime();
+  if (runtime.status === "INITIALIZING" && runtime.operational === null) {
+    return (
+      <main className="pos-splash" aria-labelledby="pos-splash-title">
+        <Spinner label="Membuka database lokal" size="large" />
+        <Heading id="pos-splash-title" level={1}>Kastur POS</Heading>
+      </main>
+    );
+  }
+
+  if (runtime.operational === null) return <SessionEntry />;
+  const locked = runtime.status !== "READY";
   return (
-    <main className="ks-root app-shell" aria-labelledby="app-title">
-      <Surface
-        className="app-shell__surface"
-        elevation={1}
-        padding="spacious"
+    <>
+      <div
+        aria-hidden={locked || undefined}
+        className={locked ? "pos-runtime is-locked" : "pos-runtime"}
       >
-        <Stack align="center" gap={3}>
-          <Text as="span" size="caption" tone="muted" weight="bold">
-            Kastur Retail System
-          </Text>
-          <Heading id="app-title" level={1} size="display">
-            Kastur POS
-          </Heading>
-          <Text tone="secondary">Fondasi aplikasi siap.</Text>
-        </Stack>
-      </Surface>
-    </main>
+        <PosRoutes
+          key={`${runtime.operational.business.id}:${runtime.operational.auth.user.id}`}
+        />
+      </div>
+      {locked ? <SessionEntry overlay /> : null}
+    </>
   );
 }
 
-export function App() {
+export function App({
+  runtimeDependencies,
+}: {
+  readonly runtimeDependencies?: PosRuntimeDependencies;
+}) {
   return (
-    <Routes>
-      <Route path="*" element={<PlaceholderShell />} />
-    </Routes>
+    <PosRuntimeProvider
+      {...(runtimeDependencies === undefined ? {} : { dependencies: runtimeDependencies })}
+    >
+      <PosApplication />
+    </PosRuntimeProvider>
   );
 }

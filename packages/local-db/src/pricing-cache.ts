@@ -1,7 +1,12 @@
-import { PosPublishedRetailPriceBootstrapSnapshot, PosPublishedRetailPrice } from "@kastur/contracts";
+import type { PosPublishedRetailPriceBootstrapSnapshot } from "@kastur/contracts";
 import type { Dexie } from "dexie";
 import { PosCatalogCache } from "./catalog-cache.js";
-import { parseMoney } from "@kastur/numeric";
+import { parseMoney, parseQuantity } from "@kastur/numeric";
+import type {
+  LocalOpaqueProjectionRecord,
+  LocalPublishedRetailPriceRecord,
+  LocalSyncStateRecord,
+} from "./sync-store.js";
 
 export const PRICING_ALREADY_BOOTSTRAPPED = "PRICING_ALREADY_BOOTSTRAPPED";
 
@@ -10,6 +15,36 @@ export class PricingBootstrapError extends Error {
     super(message);
     this.name = "PricingBootstrapError";
   }
+}
+
+export interface LocalPricingTimeContext {
+  readonly resolved_at: string;
+  readonly status: "TRUSTED" | "CLOCK_UNTRUSTED";
+}
+
+export interface LocalApplicablePromotion {
+  readonly promotion_id: string;
+  readonly promotion_type: "FIXED_PRICE" | "PERCENT_DISCOUNT" | "FIXED_DISCOUNT";
+  readonly value: string;
+  readonly min_qty: string;
+  readonly priority: number;
+  readonly effective_from: string;
+  readonly effective_to: string;
+  readonly created_at: string;
+}
+
+function validTimestamp(value: unknown): value is string {
+  return typeof value === "string" && Number.isFinite(new Date(value).getTime());
+}
+
+function clockMetadata(serverTime: string, appliedAt: string) {
+  const offset = new Date(serverTime).getTime() - new Date(appliedAt).getTime();
+  return {
+    applied_at: appliedAt,
+    clock_offset_ms: offset,
+    clock_trust_status:
+      Math.abs(offset) <= 5 * 60 * 1_000 ? "TRUSTED" : "CLOCK_UNTRUSTED",
+  } as const;
 }
 
 export class PosPricingCache {
@@ -24,6 +59,10 @@ export class PosPricingCache {
     }
 
     const { business_id, server_time, prices } = snapshot;
+    if (!validTimestamp(server_time)) {
+      throw new PricingBootstrapError("Invalid bootstrap server_time");
+    }
+    const appliedAt = new Date().toISOString();
 
     await this.db.transaction("rw", [this.db.table("pricing_bootstrap_state"), this.db.table("published_retail_prices"), this.db.table("product_units")], async () => {
       const existingState = await this.db.table("pricing_bootstrap_state").get(business_id);
@@ -82,7 +121,15 @@ export class PosPricingCache {
           product_unit_id: price.product_unit_id,
           unit_price: price.unit_price,
           effective_from: price.effective_from,
-          effective_to: price.effective_to
+          effective_to: price.effective_to,
+          status: "ACTIVE",
+          tiers: [{
+            tier_id: `${price.price_version_id}:RETAIL`,
+            tier_code: "RETAIL",
+            min_qty: "1",
+            unit_price: price.unit_price,
+            sort_order: 0,
+          }],
         });
       }
 
@@ -93,7 +140,8 @@ export class PosPricingCache {
       await this.db.table("pricing_bootstrap_state").add({
         business_id,
         bootstrap_version: snapshot.bootstrap_version,
-        server_time
+        server_time,
+        ...clockMetadata(server_time, appliedAt),
       });
     });
   }
@@ -102,28 +150,125 @@ export class PosPricingCache {
     return await this.db.table("pricing_bootstrap_state").get(businessId);
   }
 
-  async getPublishedRetailPrice(businessId: string, productUnitId: string): Promise<PosPublishedRetailPrice | null> {
-    const table = this.db.table("published_retail_prices");
-    const record = await table.where("[business_id+product_unit_id]").equals([businessId, productUnitId]).first();
-    if (!record) return null;
-    
+  async getPricingTimeContext(businessId: string): Promise<LocalPricingTimeContext> {
+    const syncStates = await this.db
+      .table<LocalSyncStateRecord>("sync_state")
+      .where("business_id")
+      .equals(businessId)
+      .toArray();
+    const state = syncStates.sort((left, right) =>
+      right.updated_at.localeCompare(left.updated_at),
+    )[0];
+    const legacyState = state === undefined
+      ? await this.db.table("pricing_bootstrap_state").get(businessId)
+      : undefined;
+    const selected = state ?? legacyState;
+    if (selected === undefined || !validTimestamp(selected.server_time)) {
+      return {
+        resolved_at: new Date().toISOString(),
+        status: "CLOCK_UNTRUSTED",
+      };
+    }
+    const trust = selected.clock_trust_status === "TRUSTED" ? "TRUSTED" : "CLOCK_UNTRUSTED";
+    const offset = typeof selected.clock_offset_ms === "number" && Number.isFinite(selected.clock_offset_ms)
+      ? selected.clock_offset_ms
+      : 0;
     return {
-      price_version_id: record.price_version_id,
-      product_unit_id: record.product_unit_id,
-      unit_price: record.unit_price,
-      effective_from: record.effective_from,
-      effective_to: record.effective_to
+      resolved_at:
+        trust === "TRUSTED"
+          ? new Date(Date.now() + offset).toISOString()
+          : new Date(selected.server_time).toISOString(),
+      status: trust,
     };
   }
 
-  async listPublishedRetailPrices(businessId: string): Promise<PosPublishedRetailPrice[]> {
-    const records = await this.db.table("published_retail_prices").where("business_id").equals(businessId).toArray();
-    return records.map(r => ({
-      price_version_id: r.price_version_id,
-      product_unit_id: r.product_unit_id,
-      unit_price: r.unit_price,
-      effective_from: r.effective_from,
-      effective_to: r.effective_to
-    }));
+  async getPublishedRetailPrice(
+    businessId: string,
+    productUnitId: string,
+  ): Promise<LocalPublishedRetailPriceRecord | null> {
+    const records = await this.db
+      .table<LocalPublishedRetailPriceRecord>("published_retail_prices")
+      .where("[business_id+product_unit_id]")
+      .equals([businessId, productUnitId])
+      .toArray();
+    const time = await this.getPricingTimeContext(businessId);
+    const asOf = new Date(time.resolved_at).getTime();
+    return records
+      .filter((record) => {
+        const start = new Date(record.effective_from).getTime();
+        const end = record.effective_to === null
+          ? Number.POSITIVE_INFINITY
+          : new Date(record.effective_to).getTime();
+        return (
+          (record.status === undefined || record.status === "ACTIVE" || record.status === "SCHEDULED") &&
+          start <= asOf && asOf < end
+        );
+      })
+      .sort((left, right) =>
+        right.effective_from.localeCompare(left.effective_from) ||
+        left.price_version_id.localeCompare(right.price_version_id),
+      )[0] ?? null;
+  }
+
+  async listPublishedRetailPrices(
+    businessId: string,
+  ): Promise<LocalPublishedRetailPriceRecord[]> {
+    return this.db
+      .table<LocalPublishedRetailPriceRecord>("published_retail_prices")
+      .where("business_id")
+      .equals(businessId)
+      .toArray();
+  }
+
+  async listApplicablePromotions(
+    businessId: string,
+    productUnitId: string,
+  ): Promise<readonly LocalApplicablePromotion[]> {
+    const time = await this.getPricingTimeContext(businessId);
+    const asOf = new Date(time.resolved_at).getTime();
+    const records = await this.db
+      .table<LocalOpaqueProjectionRecord>("promotions")
+      .where("business_id")
+      .equals(businessId)
+      .toArray();
+    const promotions: LocalApplicablePromotion[] = [];
+    for (const record of records) {
+      const row = record.payload;
+      if (row.product_unit_id !== productUnitId) continue;
+      if (row.status !== "ACTIVE" && row.status !== "SCHEDULED") continue;
+      if (
+        typeof row.id !== "string" ||
+        (row.promotion_type !== "FIXED_PRICE" &&
+          row.promotion_type !== "PERCENT_DISCOUNT" &&
+          row.promotion_type !== "FIXED_DISCOUNT") ||
+        typeof row.value !== "string" ||
+        typeof row.min_qty !== "string" ||
+        typeof row.priority !== "number" ||
+        !Number.isSafeInteger(row.priority) ||
+        !validTimestamp(row.effective_from) ||
+        !validTimestamp(row.effective_to) ||
+        !validTimestamp(row.created_at)
+      ) continue;
+      const starts = new Date(row.effective_from).getTime();
+      const ends = new Date(row.effective_to).getTime();
+      if (starts > asOf || asOf >= ends) continue;
+      try {
+        parseMoney(row.value);
+        parseQuantity(row.min_qty);
+      } catch {
+        continue;
+      }
+      promotions.push({
+        promotion_id: row.id,
+        promotion_type: row.promotion_type,
+        value: row.value,
+        min_qty: row.min_qty,
+        priority: row.priority,
+        effective_from: row.effective_from,
+        effective_to: row.effective_to,
+        created_at: row.created_at,
+      });
+    }
+    return promotions;
   }
 }

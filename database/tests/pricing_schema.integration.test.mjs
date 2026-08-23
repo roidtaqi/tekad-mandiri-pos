@@ -47,18 +47,7 @@ describeWithPostgres("M7: Pricing Schema", () => {
     childUrl.pathname = `/${databaseName}`;
     childDatabaseUrl = childUrl.toString();
 
-    const output = /** @type {string[]} */ ([]);
-    const pushOutput = (/** @type {string} */ line) => output.push(line);
-    const result = await applyMigrations({
-      databaseUrl: childDatabaseUrl,
-      
-      writeStdout: pushOutput,
-      writeStderr: pushOutput,
-    });
-    // @ts-ignore
-    if (!result.success) {
-      throw new Error(`Migration failed: \n${output.join("\n")}`);
-    }
+    await applyMigrations({ databaseUrl: childDatabaseUrl });
 
     client = new Client({ connectionString: childDatabaseUrl });
     await client.connect();
@@ -85,8 +74,8 @@ describeWithPostgres("M7: Pricing Schema", () => {
     if (client === undefined) throw new Error("client is not initialized.");
 
     await client.query(`
-      INSERT INTO core.businesses (id, name, status, created_at, updated_at)
-      VALUES ($1, 'Test Business', 'ACTIVE', NOW(), NOW())
+      INSERT INTO core.businesses (id, name, timezone, status, created_at, updated_at)
+      VALUES ($1, 'Test Business', 'Asia/Makassar', 'ACTIVE', NOW(), NOW())
     `, [businessId]);
 
     await client.query(`
@@ -100,9 +89,12 @@ describeWithPostgres("M7: Pricing Schema", () => {
     `, [productId, businessId, categoryId]);
     
     await client.query(`
-      INSERT INTO catalog.product_units (id, product_id, unit_code, conversion_factor, can_sell, can_purchase, allow_decimal_qty, status, created_at)
-      VALUES ($1, $2, 'PCS', 1, true, true, false, 'ACTIVE', NOW())
-    `, [productUnitId, productId]);
+      INSERT INTO catalog.product_units (
+        id, business_id, product_id, unit_code, display_name, conversion_factor,
+        can_sell, can_purchase, allow_decimal_qty, status, created_at, updated_at, version
+      )
+      VALUES ($1, $2, $3, 'PCS', 'Piece', 1, true, true, false, 'ACTIVE', NOW(), NOW(), 1)
+    `, [productUnitId, businessId, productId]);
   });
 
   it("can insert pricing rules and versions", async () => {
@@ -160,5 +152,45 @@ describeWithPostgres("M7: Pricing Schema", () => {
     `, [randomUUID(), priceVersionId]);
 
     expect(tierRes.rowCount).toBe(1);
+  });
+
+  it("enforces published Promotion status and percentage bounds", async () => {
+    if (client === undefined) throw new Error("client is not initialized.");
+
+    await expect(
+      client.query(
+        `INSERT INTO pricing.promotions (
+           id, business_id, name, product_unit_id, promotion_type, value,
+           min_qty, priority, effective_from, effective_to, status, created_by,
+           created_at, updated_at, version
+         ) VALUES (
+           $1, $2, 'Invalid percentage', $3, 'PERCENT_DISCOUNT', 100.0001,
+           1, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '1 day',
+           'ACTIVE', $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1
+         )`,
+        [randomUUID(), businessId, productUnitId],
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "promotions_percent_value_check",
+    });
+
+    await expect(
+      client.query(
+        `INSERT INTO pricing.promotions (
+           id, business_id, name, product_unit_id, promotion_type, value,
+           min_qty, priority, effective_from, effective_to, status, created_by,
+           created_at, updated_at, version
+         ) VALUES (
+           $1, $2, 'Invalid status', $3, 'FIXED_PRICE', 10,
+           1, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '1 day',
+           'PUBLISHED', $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1
+         )`,
+        [randomUUID(), businessId, productUnitId],
+      ),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "promotions_status_check",
+    });
   });
 });

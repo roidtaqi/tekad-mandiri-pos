@@ -43,3 +43,12 @@ The matching root handoff files remain as bootstrap entry points. The copies und
 
 - [Business Rules v1](<./Kastur Retail System — Business Rules v1.md>)
 - [PRD v2](<./Kastur Retail System — PRD v2.md>)
+
+## Implementation and operations records
+
+- [Architecture decisions](./decisions/README.md)
+- [Execution/acceptance registries](./execution/README.md)
+- [Operations guides and runbooks](./operations/README.md)
+
+These records describe implementation and operational evidence. They do not
+replace the business-rule authorities above.

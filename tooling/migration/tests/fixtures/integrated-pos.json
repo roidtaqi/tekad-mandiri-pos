@@ -1,0 +1,37 @@
+{
+  "products": [
+    {
+      "id": "inv-product-1",
+      "sku": "SKU-001",
+      "barcode": "899000000001",
+      "name": "Air Uji",
+      "category": "Minuman",
+      "brand": "Kastur Test",
+      "is_active": true,
+      "source": "INVENTORY_PRICING_APP"
+    }
+  ],
+  "productUnits": [
+    {
+      "id": "pos-unit-1",
+      "product_id": "inv-product-1",
+      "unit_name": "pcs",
+      "conversion_to_base": 1,
+      "active_selling_price": 20.25,
+      "cost_price": 12.34000001,
+      "effective_date": "2026-08-01"
+    }
+  ],
+  "productBarcodes": [
+    { "id": "pos-barcode-1", "product_id": "inv-product-1", "unit_id": "pos-unit-1", "barcode": "899000000001" }
+  ],
+  "stockBalances": [
+    { "id": "balance-1", "product_id": "inv-product-1", "outlet_id": "legacy-outlet-1", "qty": 5.500000 }
+  ],
+  "users": [
+    { "id": "legacy-user", "name": "Never import me", "role": "Supervisor", "pin": "1234" }
+  ],
+  "roles": [{ "id": "legacy-role", "name": "Supervisor" }],
+  "syncQueue": [{ "id": "legacy-sync", "status": "PENDING" }],
+  "transactions": [{ "id": "legacy-sale" }]
+}

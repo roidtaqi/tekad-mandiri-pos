@@ -352,8 +352,9 @@ describe("Catalog UI", () => {
       // H: Barcode
       expect(screen.getAllByText("089686012345").length).toBeGreaterThan(0);
 
-      // M: No fabricated values (price, etc. is disabled)
-      expect(screen.getAllByText("Belum tersedia pada tahap ini").length).toBeGreaterThan(0);
+      // M: Unintegrated price, stock, and mutation controls are not presented as production UI.
+      expect(screen.queryByText("Belum tersedia pada tahap ini")).toBeNull();
+      expect(screen.queryByRole("button", { name: "Tambah Unit" })).toBeNull();
     });
 
     it("E: NULL Brand representation", async () => {

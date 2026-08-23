@@ -47,18 +47,7 @@ describeWithPostgres("M5-006: Purchasing Returns Schema", () => {
     childUrl.pathname = `/${databaseName}`;
     childDatabaseUrl = childUrl.toString();
 
-    const output = /** @type {string[]} */ ([]);
-    const pushOutput = (/** @type {string} */ line) => output.push(line);
-    const result = await applyMigrations({
-      databaseUrl: childDatabaseUrl,
-      
-      writeStdout: pushOutput,
-      writeStderr: pushOutput,
-    });
-    // @ts-ignore
-    if (!result.success) {
-      throw new Error(`Migration failed: \n${output.join("\n")}`);
-    }
+    await applyMigrations({ databaseUrl: childDatabaseUrl });
 
     client = new Client({ connectionString: childDatabaseUrl });
     await client.connect();
@@ -91,13 +80,15 @@ describeWithPostgres("M5-006: Purchasing Returns Schema", () => {
     if (client === undefined) throw new Error("client is not initialized.");
 
     await client.query(`
-      INSERT INTO core.businesses (id, name, status, created_at, updated_at)
-      VALUES ($1, 'Test Business', 'ACTIVE', NOW(), NOW())
+      INSERT INTO core.businesses (id, name, timezone, status, created_at, updated_at)
+      VALUES ($1, 'Test Business', 'Asia/Makassar', 'ACTIVE', NOW(), NOW())
     `, [businessId]);
 
     await client.query(`
-      INSERT INTO core.locations (id, business_id, name, type, status, created_at, updated_at, version)
-      VALUES ($1, $2, 'Test Location', 'STORE', 'ACTIVE', NOW(), NOW(), 1)
+      INSERT INTO core.locations (
+        id, business_id, code, name, type, is_default, status, created_at, updated_at, version
+      )
+      VALUES ($1, $2, 'MAIN', 'Test Location', 'STORE', true, 'ACTIVE', NOW(), NOW(), 1)
     `, [locationId, businessId]);
 
     await client.query(`
@@ -111,9 +102,12 @@ describeWithPostgres("M5-006: Purchasing Returns Schema", () => {
     `, [productId, businessId, categoryId]);
 
     await client.query(`
-      INSERT INTO catalog.product_units (id, product_id, unit_code, conversion_factor, can_sell, can_purchase, allow_decimal_qty, status, created_at)
-      VALUES ($1, $2, 'PCS', 1, true, true, false, 'ACTIVE', NOW())
-    `, [productUnitId, productId]);
+      INSERT INTO catalog.product_units (
+        id, business_id, product_id, unit_code, display_name, conversion_factor,
+        can_sell, can_purchase, allow_decimal_qty, status, created_at, updated_at, version
+      )
+      VALUES ($1, $2, $3, 'PCS', 'Piece', 1, true, true, false, 'ACTIVE', NOW(), NOW(), 1)
+    `, [productUnitId, businessId, productId]);
 
     await client.query(`
       INSERT INTO catalog.suppliers (id, business_id, code, name, status, created_at, updated_at, version)

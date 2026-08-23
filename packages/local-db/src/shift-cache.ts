@@ -1,6 +1,8 @@
 import type { Dexie } from "dexie";
 import type { AuthContextResponse } from "@kastur/contracts";
 import { parseMoney } from "@kastur/numeric";
+import type { LocalAuditEventRecord } from "./audit-store.js";
+import type { LocalCashMovementRecord } from "./cash-manager.js";
 
 // ─── Stable Error Codes ────────────────────────────────────────────
 
@@ -30,12 +32,14 @@ export interface LocalShiftRecord {
   readonly cashier_user_id: string;
   readonly device_id: string;
   readonly terminal_id: string | null;
-  readonly status: "OPEN";
-  readonly sync_status: "PENDING";
+  readonly status: "OPEN" | "CLOSING" | "CLOSED" | "FORCED_CLOSED";
+  readonly sync_status: "PENDING" | "SYNCED" | "REQUIRES_REVIEW";
   readonly opening_cash: string;
   readonly opened_at: string;
   readonly authorization_version: number;
   readonly active_context_key: string;
+  readonly blind_actual_cash?: string | null;
+  readonly blind_counted_at?: string | null;
 }
 
 // ─── Open Shift Input ──────────────────────────────────────────────
@@ -46,6 +50,32 @@ export interface OpenShiftInput {
   readonly terminal_id?: string | null;
   readonly opening_cash: string;
   readonly opened_at: string;
+}
+
+export interface LocalOpenShiftOutboxPayloadV1 {
+  readonly payload_version: 1;
+  readonly shift: LocalShiftRecord;
+  readonly cash_movements: readonly LocalCashMovementRecord[];
+  readonly audit_events: readonly LocalAuditEventRecord[];
+}
+
+export type ShiftOpenFaultPoint =
+  | "after_shift"
+  | "after_cash"
+  | "after_audit"
+  | "before_outbox";
+
+const testFaults = new WeakMap<PosShiftCache, ShiftOpenFaultPoint>();
+
+export function _setShiftOpenFaultForTest(
+  cache: PosShiftCache,
+  fault: ShiftOpenFaultPoint | undefined,
+): void {
+  if (fault === undefined) {
+    testFaults.delete(cache);
+  } else {
+    testFaults.set(cache, fault);
+  }
 }
 
 // ─── Context Key Builder ───────────────────────────────────────────
@@ -144,6 +174,7 @@ export class PosShiftCache {
 
     const shift_id = crypto.randomUUID();
     const shift_number = shift_id.split("-")[0]!.toUpperCase();
+    const correlationId = crypto.randomUUID();
 
     // ── Context key for uniqueness ────────────────────────────────
 
@@ -169,11 +200,65 @@ export class PosShiftCache {
       opened_at,
       authorization_version: auth.authorization_version,
       active_context_key,
+      blind_actual_cash: null,
+      blind_counted_at: null,
+    };
+
+    const openingBalance: LocalCashMovementRecord = {
+      id: crypto.randomUUID(),
+      shift_id,
+      business_id,
+      location_id,
+      movement_type: "OPENING_BALANCE",
+      direction: "IN",
+      amount: opening_cash,
+      source_type: "SHIFT",
+      source_id: shift_id,
+      reason_code: null,
+      notes: null,
+      occurred_at: opened_at,
+      actor_user_id: cashier_user_id,
+      correlation_id: correlationId,
+    };
+
+    const auditEvent: LocalAuditEventRecord = {
+      id: crypto.randomUUID(),
+      business_id,
+      location_id,
+      actor_type: "USER",
+      actor_user_id: cashier_user_id,
+      actor_role_snapshot: auth.primary_role ?? null,
+      action: "SHIFT_OPENED",
+      entity_type: "CASH_SHIFT",
+      entity_id: shift_id,
+      occurred_at: opened_at,
+      recorded_at: new Date().toISOString(),
+      device_id,
+      session_id: null,
+      reason: null,
+      before_data: null,
+      after_data: {
+        opening_cash,
+        shift_number,
+        status: "OPEN",
+        terminal_id,
+      },
+      correlation_id: correlationId,
+      authorization_version: auth.authorization_version,
+      sync_status: "PENDING",
     };
 
     // ── Transactional insert with uniqueness enforcement ──────────
 
-    await this.db.transaction("rw", [this.db.table("shifts"), this.db.table("outbox")], async () => {
+    await this.db.transaction(
+      "rw",
+      [
+        this.db.table("shifts"),
+        this.db.table("cash_movements"),
+        this.db.table("audit_events"),
+        this.db.table("outbox"),
+      ],
+      async () => {
       // Application-level pre-check for a clear error message
       const existing = await this.db
         .table("shifts")
@@ -188,18 +273,13 @@ export class PosShiftCache {
         );
       }
 
-      const outboxPayload = JSON.stringify({
-        shift_id: record.shift_id,
-        shift_number: record.shift_number,
-        business_id: record.business_id,
-        location_id: record.location_id,
-        terminal_id: record.terminal_id,
-        cashier_user_id: record.cashier_user_id,
-        device_id: record.device_id,
-        opening_cash: record.opening_cash,
-        opened_at: record.opened_at,
-        authorization_version: record.authorization_version,
-      });
+      const canonicalPayload: LocalOpenShiftOutboxPayloadV1 = {
+        payload_version: 1,
+        shift: record,
+        cash_movements: [openingBalance],
+        audit_events: [auditEvent],
+      };
+      const outboxPayload = JSON.stringify(canonicalPayload);
 
       const outboxRecord = {
         outbox_id: crypto.randomUUID(),
@@ -211,7 +291,10 @@ export class PosShiftCache {
         location_id: record.location_id,
         device_id: record.device_id,
         authorization_version: record.authorization_version,
-        correlation_id: crypto.randomUUID(),
+        ...(auth.offline_authorization === undefined
+          ? {}
+          : { offline_authorization: auth.offline_authorization }),
+        correlation_id: correlationId,
         occurred_at: record.opened_at,
         payload: outboxPayload,
         request_fingerprint: JSON.stringify({ open_shift: record.shift_id }),
@@ -224,6 +307,20 @@ export class PosShiftCache {
 
       try {
         await this.db.table("shifts").add(record);
+        if (testFaults.get(this) === "after_shift") {
+          throw new Error("Fault: after_shift");
+        }
+        await this.db.table("cash_movements").add(openingBalance);
+        if (testFaults.get(this) === "after_cash") {
+          throw new Error("Fault: after_cash");
+        }
+        await this.db.table("audit_events").add(auditEvent);
+        if (testFaults.get(this) === "after_audit") {
+          throw new Error("Fault: after_audit");
+        }
+        if (testFaults.get(this) === "before_outbox") {
+          throw new Error("Fault: before_outbox");
+        }
         await this.db.table("outbox").add(outboxRecord);
       } catch (error: unknown) {
         // Map Dexie native ConstraintError to the same stable code
@@ -265,10 +362,16 @@ export class PosShiftCache {
     return record as LocalShiftRecord;
   }
 
-  async markShiftClosingStarted(shiftId: string, timestamp: string): Promise<void> {
+  async markShiftClosingStarted(
+    shiftId: string,
+    timestamp: string,
+    actualCash: string,
+  ): Promise<void> {
     await this.db.table("shifts").update(shiftId, {
       status: "CLOSING",
-      closing_started_at: timestamp
+      closing_started_at: timestamp,
+      blind_actual_cash: actualCash,
+      blind_counted_at: timestamp,
     });
   }
 
@@ -281,4 +384,3 @@ export class PosShiftCache {
     });
   }
 }
-

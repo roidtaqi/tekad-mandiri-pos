@@ -200,7 +200,12 @@ try {
     "application/json; charset=utf-8",
   );
   assert.equal(notFoundResponse.headers.get("cache-control"), "no-store");
-  assert.deepEqual(await notFoundResponse.json(), { error: "NOT_FOUND" });
+  assert.deepEqual(await notFoundResponse.json(), {
+    error: {
+      code: "NOT_FOUND",
+      message: "Endpoint tidak ditemukan.",
+    },
+  });
 } catch (error) {
   smokeError = error;
 }

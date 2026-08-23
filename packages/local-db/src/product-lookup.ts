@@ -29,6 +29,25 @@ export interface ProductLookupResult {
   readonly price_version_id: string;
   readonly conversion_factor: string;
   readonly track_inventory: boolean;
+  readonly price_tiers: readonly {
+    readonly tier_id: string;
+    readonly tier_code: string;
+    readonly min_qty: string;
+    readonly unit_price: string;
+    readonly sort_order: number;
+  }[];
+  readonly promotions: readonly {
+    readonly promotion_id: string;
+    readonly promotion_type: "FIXED_PRICE" | "PERCENT_DISCOUNT" | "FIXED_DISCOUNT";
+    readonly value: string;
+    readonly min_qty: string;
+    readonly priority: number;
+    readonly effective_from: string;
+    readonly effective_to: string;
+    readonly created_at: string;
+  }[];
+  readonly pricing_resolved_at: string;
+  readonly pricing_time_status: "TRUSTED" | "CLOCK_UNTRUSTED";
 }
 
 export class PosProductLookup {
@@ -78,6 +97,17 @@ export class PosProductLookup {
     if (!price) {
       throw new ProductLookupError("No published retail price available", NO_PUBLISHED_PRICE);
     }
+    const pricingTime = await this.pricing.getPricingTimeContext(businessId);
+    const promotions = await this.pricing.listApplicablePromotions(businessId, unit.id);
+    const priceTiers = price.tiers?.length
+      ? price.tiers
+      : [{
+          tier_id: `${price.price_version_id}:RETAIL`,
+          tier_code: "RETAIL",
+          min_qty: "1",
+          unit_price: price.unit_price,
+          sort_order: 0,
+        }];
 
     // Determine the barcode to report. If they searched by barcode, report that.
     // Otherwise, maybe find an active barcode or just leave it null.
@@ -108,6 +138,10 @@ export class PosProductLookup {
       price_version_id: price.price_version_id,
       conversion_factor: unit.conversion_factor,
       track_inventory: product.track_inventory,
+      price_tiers: priceTiers,
+      promotions,
+      pricing_resolved_at: pricingTime.resolved_at,
+      pricing_time_status: pricingTime.status,
     };
   }
 

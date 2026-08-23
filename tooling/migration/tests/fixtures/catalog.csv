@@ -1,0 +1,2 @@
+product_id,sku,name,category,brand,supplier,unit_id,unit_name,conversion_to_base,manual_cost,active_selling_price,barcode,is_active
+sheet-product-2,SKU-002,"Teh Uji",Minuman,Kastur Test,Supplier Test,sheet-unit-2,pcs,1,7.125,10.50,899000000002,true

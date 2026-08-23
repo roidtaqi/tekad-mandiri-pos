@@ -5,6 +5,7 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { applyMigrations } from "../scripts/migrations.mjs";
+import { recordInitialCost } from "../../packages/domain/src/costing/commands.js";
 
 const configuredAdminUrl = process.env.TEST_DATABASE_URL?.trim();
 const describeWithPostgres = configuredAdminUrl === undefined ? describe.skip : describe;
@@ -47,18 +48,7 @@ describeWithPostgres("M6-001: Costing Schema", () => {
     childUrl.pathname = `/${databaseName}`;
     childDatabaseUrl = childUrl.toString();
 
-    const output = /** @type {string[]} */ ([]);
-    const pushOutput = (/** @type {string} */ line) => output.push(line);
-    const result = await applyMigrations({
-      databaseUrl: childDatabaseUrl,
-      
-      writeStdout: pushOutput,
-      writeStderr: pushOutput,
-    });
-    // @ts-ignore
-    if (!result.success) {
-      throw new Error(`Migration failed: \n${output.join("\n")}`);
-    }
+    await applyMigrations({ databaseUrl: childDatabaseUrl });
 
     client = new Client({ connectionString: childDatabaseUrl });
     await client.connect();
@@ -85,13 +75,13 @@ describeWithPostgres("M6-001: Costing Schema", () => {
     if (client === undefined) throw new Error("client is not initialized.");
 
     await client.query(`
-      INSERT INTO core.businesses (id, name, status, created_at, updated_at)
-      VALUES ($1, 'Test Business', 'ACTIVE', NOW(), NOW())
+      INSERT INTO core.businesses (id, name, timezone, status, created_at, updated_at)
+      VALUES ($1, 'Test Business', 'Asia/Makassar', 'ACTIVE', NOW(), NOW())
     `, [businessId]);
 
     await client.query(`
-      INSERT INTO core.locations (id, business_id, name, type, status, created_at, updated_at, version)
-      VALUES ($1, $2, 'Test Location', 'STORE', 'ACTIVE', NOW(), NOW(), 1)
+      INSERT INTO core.locations (id, business_id, code, name, type, is_default, status, created_at, updated_at, version)
+      VALUES ($1, $2, 'MAIN', 'Test Location', 'STORE', true, 'ACTIVE', NOW(), NOW(), 1)
     `, [locationId, businessId]);
 
     await client.query(`
@@ -133,5 +123,41 @@ describeWithPostgres("M6-001: Costing Schema", () => {
     `, [businessId, locationId, productId, costEventId]);
 
     expect(stateRes.rowCount).toBe(1);
+  });
+
+  it("records an explicit FINAL initial-cost authority source", async () => {
+    if (client === undefined) throw new Error("client is not initialized.");
+
+    const costEventId = randomUUID();
+    const result = await recordInitialCost(
+      {
+        business_id: businessId,
+        permissions: new Set(["costing.adjust"]),
+        user_id: randomUUID(),
+      },
+      client,
+      {
+        cost_event_id: costEventId,
+        location_id: locationId,
+        product_id: productId,
+        unit_cost: "16.25000000",
+      },
+    );
+    expect(result.cost_event_id).toBe(costEventId);
+
+    const authority = await client.query(
+      `SELECT cost_status, cost_source_type, cost_source_id,
+              mwa_unit_cost::text, last_cost_event_id
+       FROM costing.product_cost_states
+       WHERE business_id = $1 AND location_id = $2 AND product_id = $3`,
+      [businessId, locationId, productId],
+    );
+    expect(authority.rows[0]).toMatchObject({
+      cost_source_id: costEventId,
+      cost_source_type: "INITIAL_COST",
+      cost_status: "FINAL",
+      last_cost_event_id: costEventId,
+      mwa_unit_cost: "16.25000000",
+    });
   });
 });

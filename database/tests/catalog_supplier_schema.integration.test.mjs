@@ -47,18 +47,7 @@ describeWithPostgres("M5-001: Catalog Supplier and ProductSupplier Schema", () =
     childUrl.pathname = `/${databaseName}`;
     childDatabaseUrl = childUrl.toString();
 
-    const output = /** @type {string[]} */ ([]);
-    const pushOutput = (/** @type {string} */ line) => output.push(line);
-    const result = await applyMigrations({
-      databaseUrl: childDatabaseUrl,
-      
-      writeStdout: pushOutput,
-      writeStderr: pushOutput,
-    });
-    // @ts-ignore
-    if (!result.success) {
-      throw new Error(`Migration failed: \n${output.join("\n")}`);
-    }
+    await applyMigrations({ databaseUrl: childDatabaseUrl });
 
     client = new Client({ connectionString: childDatabaseUrl });
     await client.connect();
@@ -85,8 +74,8 @@ describeWithPostgres("M5-001: Catalog Supplier and ProductSupplier Schema", () =
     if (client === undefined) throw new Error("client is not initialized.");
 
     await client.query(`
-      INSERT INTO core.businesses (id, name, status, created_at, updated_at)
-      VALUES ($1, 'Test Business', 'ACTIVE', NOW(), NOW())
+      INSERT INTO core.businesses (id, name, timezone, status, created_at, updated_at)
+      VALUES ($1, 'Test Business', 'Asia/Makassar', 'ACTIVE', NOW(), NOW())
     `, [businessId]);
 
     await client.query(`

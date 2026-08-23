@@ -1,54 +1,31 @@
 # Milestone State Registry
 
-| Milestone | Status | Base SHA | Final SHA | ADR(s) | CI Result | Next Dependency |
-|---|---|---|---|---|---|---|
-| M0 | COMPLETE | - | - | - | - | - |
-| M1 | COMPLETE | - | - | - | - | - |
-| M2-001 | COMPLETE | - | - | - | - | - |
-| M2-002 | COMPLETE | - | - | - | - | - |
-| M2-003 | COMPLETE | - | - | - | - | - |
-| M2-004 | COMPLETE | - | - | - | - | - |
-| M2-005 | COMPLETE | - | - | - | - | - |
-| M2-006 | COMPLETE | - | - | - | - | - |
-| M2-007 | COMPLETE | - | ba6a3389b3e58b02b24e72e25e9dbb3cf774b005 | - | SUCCESS | M2-008 |
-| M2-008 | COMPLETE | ba6a3389b3e58b02b24e72e25e9dbb3cf774b005 | - | - | - | M2-009 |
-| M2-009 | COMPLETE | - | - | - | SUCCESS | M3 |
-| M3 | IN_PROGRESS | 9f3dab1 | - | - | - | M4 |
-| M3-001 | IN_PROGRESS | 9f3dab1 | - | - | - | M3-002 |
-| M3-002 | PENDING | - | - | - | - | M3-003 |
-| M3-003 | PENDING | - | - | - | - | M3-004 |
-| M3-004 | PENDING | - | - | - | - | M3-005 |
-| M3-005 | PENDING | - | - | - | - | M3-006 |
-| M3-006 | PENDING | - | - | - | - | M3-007 |
-| M3-007 | PENDING | - | - | - | - | M3-008 |
-| M3-008 | PENDING | - | - | - | - | M3-009 |
-| M3-009 | PENDING | - | - | - | - | M4 |
-| M4 | COMPLETE | 3006003 | - | - | SUCCESS | M5 |
-| M4-001 | COMPLETE | 3006003 | - | - | SUCCESS | M4-002 |
-| M4-002 | COMPLETE | - | - | - | SUCCESS | M4-003 |
-| M4-003 | COMPLETE | - | - | - | SUCCESS | M4-004 |
-| M4-004 | COMPLETE | - | - | - | SUCCESS | M4-005 |
-| M4-005 | COMPLETE | - | - | - | SUCCESS | M4-006 |
-| M4-006 | COMPLETE | - | - | - | SUCCESS | M4-007 |
-| M4-007 | COMPLETE | - | - | - | SUCCESS | M5 |
-| M5 | IN_PROGRESS | - | - | - | - | M6 |
-| M5-001 | COMPLETE | - | - | - | SUCCESS | M5-002 |
-| M5-002 | COMPLETE | - | - | - | SUCCESS | M5-003 |
-| M5-003 | COMPLETE | - | - | - | SUCCESS | M5-004 |
-| M5-004 | COMPLETE | - | - | - | SUCCESS | M5-005 |
-| M5-005 | COMPLETE | - | - | - | SUCCESS | M5-006 |
-| M5-006 | COMPLETE | - | - | - | SUCCESS | M5-007 |
-| M5-007 | COMPLETE | - | - | - | SUCCESS | M6 |
-| M6 | COMPLETE | - | - | - | SUCCESS | M7 |
-| M6-001 | COMPLETE | - | - | - | SUCCESS | M6-002 |
-| M6-002 | COMPLETE | - | - | - | SUCCESS | M7 |
-| M7 | COMPLETE | - | - | - | SUCCESS | M8 |
-| M8 | COMPLETE | - | - | - | SUCCESS | M9 |
-| M9 | COMPLETE | - | - | - | SUCCESS | M10 |
-| M10 | COMPLETE | - | - | - | SUCCESS | M11 |
-| M11 | COMPLETE | - | - | - | SUCCESS | M12 |
-| M12 | COMPLETE | - | - | - | SUCCESS | M13 |
-| M13 | COMPLETE | - | - | - | SUCCESS | M14 |
-| M14 | COMPLETE | - | - | - | SUCCESS | M15 |
-| M15 | READY | - | - | - | - | M16 |
-| M16 | READY | - | - | - | - | - |
+Snapshot ini merekonsiliasi kapabilitas yang ada pada kandidat repository per
+2026-08-23. `COMPLETE` berarti implementasi repository, integrasi, dan sumber
+automated proof tersedia. Tabel ini tidak mengklaim SHA final, hasil CI, deploy
+staging/production, atau acceptance manusia; hasil kampanye final untuk exact
+SHA dicatat oleh release owner setelah dijalankan.
+
+| Milestone | Repository status | Capability/proof source | External state |
+|---|---|---|---|
+| M0 — Foundation | COMPLETE | Workspace/build boundaries dan migration runner: [`tooling/tests/repository-boundaries.test.ts`](../../tooling/tests/repository-boundaries.test.ts), [`database/tests/migrations.unit.test.mjs`](../../database/tests/migrations.unit.test.mjs) | — |
+| M1 — Identity/Catalog | COMPLETE | Auth, tenant-safe Catalog, bootstrap, dan redaction: [`database/tests/catalog_application.integration.test.mjs`](../../database/tests/catalog_application.integration.test.mjs), [`database/tests/query_redaction.integration.test.mjs`](../../database/tests/query_redaction.integration.test.mjs), [`packages/local-db/tests/catalog-cache.test.ts`](../../packages/local-db/tests/catalog-cache.test.ts) | — |
+| M2 — POS Core Offline Sale | COMPLETE | Gate A: [`packages/local-db/tests/sales-manager.test.ts`](../../packages/local-db/tests/sales-manager.test.ts), [`packages/local-db/tests/e2e-offline.test.ts`](../../packages/local-db/tests/e2e-offline.test.ts), [`apps/pos/src/scanner/use-scanner-capture.test.tsx`](../../apps/pos/src/scanner/use-scanner-capture.test.tsx), [`apps/pos/src/receipt/use-receipt-printer.test.tsx`](../../apps/pos/src/receipt/use-receipt-printer.test.tsx) | — |
+| M3 — Sync Platform v1 | COMPLETE | Gate B: [`packages/sync-client/tests/orchestrator.test.ts`](../../packages/sync-client/tests/orchestrator.test.ts), [`packages/local-db/tests/sync-store.test.ts`](../../packages/local-db/tests/sync-store.test.ts), [`database/tests/api_sync_spine.integration.test.mjs`](../../database/tests/api_sync_spine.integration.test.mjs) | — |
+| M4 — Shift/Cash Control | COMPLETE | Gate G: [`packages/local-db/tests/shift-cache.test.ts`](../../packages/local-db/tests/shift-cache.test.ts), [`packages/local-db/tests/cash-manager.test.ts`](../../packages/local-db/tests/cash-manager.test.ts), [`apps/api/src/cash.ts`](../../apps/api/src/cash.ts), [`database/tests/api_sync_spine.integration.test.mjs`](../../database/tests/api_sync_spine.integration.test.mjs) | — |
+| M5 — Purchasing/Receiving | COMPLETE | Gate C purchase/partial receipt/invoice/POST path: [`apps/api/src/purchasing.ts`](../../apps/api/src/purchasing.ts), [`database/tests/api_operational_gates.integration.test.mjs`](../../database/tests/api_operational_gates.integration.test.mjs) | — |
+| M6 — Costing/Valuation | COMPLETE | Gate C landed cost, MWA, negative-stock replacement, and reconciliation: [`apps/api/src/purchasing.ts`](../../apps/api/src/purchasing.ts), [`database/migrations/000024_harden_costing_and_opname_authority.sql`](../../database/migrations/000024_harden_costing_and_opname_authority.sql), [`database/tests/api_operational_gates.integration.test.mjs`](../../database/tests/api_operational_gates.integration.test.mjs) | — |
+| M7 — Pricing Governance | COMPLETE | Gate D proposal/approval/publication and deterministic offline resolution: [`apps/api/src/pricing.ts`](../../apps/api/src/pricing.ts), [`packages/domain/tests/pricing/resolver.test.ts`](../../packages/domain/tests/pricing/resolver.test.ts), [`packages/local-db/tests/pricing-cache.test.ts`](../../packages/local-db/tests/pricing-cache.test.ts), [`database/tests/api_operational_gates.integration.test.mjs`](../../database/tests/api_operational_gates.integration.test.mjs) | — |
+| M8 — Inventory/Opname | COMPLETE | Gate E movement authority, adjustment, watermark, recount/review/post: [`apps/api/src/inventory.ts`](../../apps/api/src/inventory.ts), [`database/migrations/000024_harden_costing_and_opname_authority.sql`](../../database/migrations/000024_harden_costing_and_opname_authority.sql), [`database/tests/api_operational_gates.integration.test.mjs`](../../database/tests/api_operational_gates.integration.test.mjs) | — |
+| M9 — Return/Refund | COMPLETE | Gate F immutable Sale, Return policy/disposition, independent Refund status: [`apps/api/src/returns.ts`](../../apps/api/src/returns.ts), [`database/migrations/000025_complete_gate_f_return_policy.sql`](../../database/migrations/000025_complete_gate_f_return_policy.sql), [`database/tests/api_operational_gates.integration.test.mjs`](../../database/tests/api_operational_gates.integration.test.mjs), [`apps/pos/src/returns/ReturnScreen.test.tsx`](../../apps/pos/src/returns/ReturnScreen.test.tsx) | — |
+| M10 — Back Office Shell | COMPLETE | Gate H composition root, authenticated deep links, permissions, logout, and API-backed resource gateway: [`apps/backoffice/src/App.test.tsx`](../../apps/backoffice/src/App.test.tsx), [`apps/backoffice/src/runtime/resource-gateway.test.ts`](../../apps/backoffice/src/runtime/resource-gateway.test.ts), [`apps/api/src/backoffice.ts`](../../apps/api/src/backoffice.ts) | — |
+| M11 — Reports/Attention | COMPLETE | Reporting/attention read models and Back Office presentation: [`database/migrations/000019_create_reporting_views.sql`](../../database/migrations/000019_create_reporting_views.sql), [`database/tests/reporting_views.integration.test.mjs`](../../database/tests/reporting_views.integration.test.mjs), [`apps/api/src/backoffice.ts`](../../apps/api/src/backoffice.ts) | — |
+| M12 — Migration Tooling | COMPLETE | Lossless readers, deterministic matching, review/dedup/reconciliation, guarded staging import: [`tooling/migration/tests/readers.test.mjs`](../../tooling/migration/tests/readers.test.mjs), [`tooling/migration/tests/transform.test.mjs`](../../tooling/migration/tests/transform.test.mjs), [`tooling/migration/tests/import-plan.test.mjs`](../../tooling/migration/tests/import-plan.test.mjs) | Real legacy exports are an input to M15, tracked in [`EXTERNAL_GATES.md`](./EXTERNAL_GATES.md). |
+| M13 — Security/Reliability Hardening | COMPLETE | Gate I and repository-owned recovery controls: [`database/tests/identity_device_append_only.integration.test.mjs`](../../database/tests/identity_device_append_only.integration.test.mjs), [`tooling/tests/repository-boundaries.test.ts`](../../tooling/tests/repository-boundaries.test.ts), [`packages/local-db/tests/sync-store.test.ts`](../../packages/local-db/tests/sync-store.test.ts), [`RELIABILITY_EVIDENCE_2026-08-23.md`](./RELIABILITY_EVIDENCE_2026-08-23.md) | Production IdP, edge policy, and owner-approved backup policy remain external. |
+| M14 — Staging Reconciliation | COMPLETE | Repository-owned readiness collector, mismatch classification, and evidence gate: [`tooling/migration/tests/readiness.test.mjs`](../../tooling/migration/tests/readiness.test.mjs), [`docs/operations/MIGRATION_STAGING.md`](../operations/MIGRATION_STAGING.md) | A real export and real target environment must still supply evidence before pilot. |
+| M15 — Pilot | READY | Software/runbooks are prepared: [`docs/operations/DEPLOYMENT_RELEASE.md`](../operations/DEPLOYMENT_RELEASE.md), [`docs/operations/MIGRATION_STAGING.md`](../operations/MIGRATION_STAGING.md) | BLOCKED_EXTERNAL — production-like infrastructure, enrolled identities, approved backup policy, reviewed legacy export, target hardware/users, and physical pilot acceptance are not repository facts. |
+| M16 — Production Cutover | READY | Cutover and forward-only recovery procedures are documented: [`docs/operations/DEPLOYMENT_RELEASE.md`](../operations/DEPLOYMENT_RELEASE.md), [`docs/operations/BACKUP_RECOVERY.md`](../operations/BACKUP_RECOVERY.md) | BLOCKED_EXTERNAL — pilot exit, production go/no-go, freeze/window, and cutover authorization have not occurred. |
+
+The detailed Gate A–I traceability and commands live in
+[`ACCEPTANCE_REGISTRY.md`](./ACCEPTANCE_REGISTRY.md). External facts must not be
+promoted to `COMPLETE` by fixture output or by a local test database.

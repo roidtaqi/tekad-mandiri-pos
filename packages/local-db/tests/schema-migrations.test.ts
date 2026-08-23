@@ -524,3 +524,75 @@ describe("POS V5 shift outbox backfill", () => {
     expect(outboxRecordsAfterReopen).toHaveLength(1);
   });
 });
+
+describe("POS V8 pricing schedule persistence", () => {
+  it("adds audit/sync and multi-version pricing without replacing a pending V6 outbox", async () => {
+    const { posLocalDatabaseDefinition } = await import("../src/pos-database");
+    const databaseName = runtime.createDatabaseName("v7-gate-a");
+    const versionSix = runtime.track(
+      new Dexie(databaseName, {
+        autoOpen: false,
+        ...runtime.dependencies,
+      }),
+    );
+    registerSchemaVersions(
+      versionSix,
+      posLocalDatabaseDefinition.schemaVersions.slice(0, 6),
+      "v7-gate-a-v6",
+    );
+    await versionSix.open();
+
+    const pendingOutbox = {
+      outbox_id: "outbox-v6",
+      command_id: "command-v6",
+      business_id: "business-v6",
+      business_event_id: "sale-v6",
+      command_type: "sales.complete",
+      schema_version: 1,
+      location_id: "location-v6",
+      device_id: "device-v6",
+      authorization_version: 1,
+      correlation_id: "correlation-v6",
+      occurred_at: "2026-08-17T01:00:00Z",
+      payload: "{}",
+      request_fingerprint: "fingerprint-v6",
+      created_at: "2026-08-17T01:00:00Z",
+      attempt_count: 0,
+      last_attempt_at: null,
+      status: "PENDING",
+      last_error: null,
+    };
+    await versionSix.table("outbox").add(pendingOutbox);
+    versionSix.close();
+
+    const versionEight = runtime.track(
+      new Dexie(databaseName, {
+        autoOpen: false,
+        ...runtime.dependencies,
+      }),
+    );
+    registerSchemaVersions(
+      versionEight,
+      posLocalDatabaseDefinition.schemaVersions,
+      "v8-pricing-schedule",
+    );
+    await versionEight.open();
+
+    expect(versionEight.verno).toBe(8);
+    await expect(versionEight.table("outbox").get("outbox-v6")).resolves.toEqual(
+      pendingOutbox,
+    );
+    await expect(versionEight.table("audit_events").count()).resolves.toBe(0);
+    await expect(versionEight.table("sync_state").count()).resolves.toBe(0);
+    await expect(versionEight.table("sync_conflicts").count()).resolves.toBe(0);
+    expect(versionEight.table("outbox").schema.indexes.map(({ name }) => name)).toContain(
+      "[business_id+status]",
+    );
+    expect(
+      versionEight
+        .table("published_retail_prices")
+        .schema.indexes.find(({ name }) => name === "[business_id+product_unit_id]")
+        ?.unique,
+    ).toBe(false);
+  });
+});

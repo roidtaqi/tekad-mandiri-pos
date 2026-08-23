@@ -45,10 +45,15 @@ export async function recordInitialCost(
     
     await executor.query(
       `INSERT INTO costing.product_cost_states (
-        business_id, location_id, product_id, mwa_unit_cost, last_valid_mwa_unit_cost, latest_landed_unit_cost, pricing_reference_unit_cost, pricing_reference_source_type, pricing_reference_source_id, last_cost_event_id, updated_at
+        business_id, location_id, product_id, mwa_unit_cost, last_valid_mwa_unit_cost,
+        latest_landed_unit_cost, pricing_reference_unit_cost,
+        pricing_reference_source_type, pricing_reference_source_id,
+        cost_status, cost_source_type, cost_source_id,
+        last_cost_event_id, updated_at
       )
       VALUES (
-        $1, $2, $3, $4, $4, $4, $4, 'INITIAL_COST', $5, $5, NOW()
+        $1, $2, $3, $4, $4, $4, $4, 'INITIAL_COST', $5,
+        'FINAL', 'INITIAL_COST', $5, $5, NOW()
       )
       ON CONFLICT (business_id, location_id, product_id) DO UPDATE SET
         mwa_unit_cost = EXCLUDED.mwa_unit_cost,
@@ -57,6 +62,9 @@ export async function recordInitialCost(
         pricing_reference_unit_cost = EXCLUDED.pricing_reference_unit_cost,
         pricing_reference_source_type = EXCLUDED.pricing_reference_source_type,
         pricing_reference_source_id = EXCLUDED.pricing_reference_source_id,
+        cost_status = EXCLUDED.cost_status,
+        cost_source_type = EXCLUDED.cost_source_type,
+        cost_source_id = EXCLUDED.cost_source_id,
         last_cost_event_id = EXCLUDED.last_cost_event_id,
         updated_at = EXCLUDED.updated_at
       `,

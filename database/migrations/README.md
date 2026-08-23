@@ -2,7 +2,7 @@
 
 All production database changes must use ordered, version-controlled migrations. Application startup must not be the primary mechanism for creating or changing critical production tables.
 
-The M0-003 harness is governed by [ADR-0001](../../docs/decisions/ADR-0001-forward-only-sql-migrations.md). It uses immutable, forward-only SQL files and a repository-owned Node runner.
+The harness is governed by [ADR-0001](../../docs/decisions/ADR-0001-forward-only-sql-migrations.md). It uses immutable, forward-only SQL files and a repository-owned Node runner.
 
 ## File convention
 
@@ -13,7 +13,8 @@ Migration files must use exactly six version digits followed by a lowercase snak
 000002_add_business_status.sql
 ```
 
-The examples illustrate naming only; M0-003 adds no domain migration files.
+The examples illustrate naming only. The files in this directory are the actual
+canonical schema history.
 
 Versions must be unique and strictly increasing. Pending files may only extend the applied sequence. Once applied, a migration file must not be edited, renamed, reordered, or removed. Add a new forward migration to correct a schema.
 

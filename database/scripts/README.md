@@ -38,4 +38,29 @@ The local test setup must satisfy all of these guards:
 
 Each integration test creates a uniquely named child database such as `kastur_migration_test_<32 lowercase hex characters>`. The test owns that child database and drops it with forced connection cleanup after the test, while leaving the configured admin database in place. A hard process or machine interruption can prevent normal cleanup; before retrying, inspect the local server and remove only confirmed orphaned `kastur_migration_test_*` databases. Remove the disposable admin database and role separately when the local test environment is no longer needed.
 
-M0-003 adds no domain migrations, domain tables, or seed operations.
+## First operational Business
+
+After applying every migration to an empty development database, open the POS
+login screen and copy its displayed local Device UUID. Create the first
+Business, default Store, Owner membership, active Device/Terminal, CASH payment
+method, default category, and short-lived opaque session in one transaction:
+
+```bash
+DATABASE_URL='postgresql://...' npm run db:business:bootstrap -- \
+  --confirm-create \
+  --business-name='Toko Contoh' \
+  --owner-name='Pemilik' \
+  --owner-email='owner@example.test' \
+  --device-id='00000000-0000-4000-8000-000000000001'
+```
+
+The command prints the generated IDs and session secret once. Paste the
+`session_secret` and `terminal_id` into the POS login screen; the same session
+may be used for Back Office development. The session is bound to the supplied
+POS Device UUID and expires after 12 hours by default. Use `--ttl-hours` only
+for an intentional development interval (maximum 720 hours). The explicit
+`--confirm-create` guard is mandatory, the operation rolls back atomically on
+failure, and the secret is stored only as SHA-256 in PostgreSQL.
+
+For an existing active Business/User/Device, issue another opaque session with
+`npm run db:session:issue`; do not run the bootstrap command again.

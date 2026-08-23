@@ -416,11 +416,11 @@ describeWithPostgres("M1-005: Product Unit and Barcode Schema", () => {
     // remain FUTURE COMMAND-LEVEL invariants and are intentionally not database-enforced in M1-005.
   });
 
-  it("60. NO FUTURE SCOPE TABLES", async () => {
+  it("60. later catalog migrations coexist without speculative tables", async () => {
     const tablesRes = await client?.query(`SELECT table_name FROM information_schema.tables WHERE table_schema = 'catalog'`);
     const tables = tablesRes?.rows.map(r => r.table_name) ?? [];
-    expect(tables).not.toContain("suppliers");
-    expect(tables).not.toContain("product_suppliers");
+    expect(tables).toContain("suppliers");
+    expect(tables).toContain("product_suppliers");
     expect(tables).not.toContain("import_batches");
     expect(tables).not.toContain("import_row_results");
     expect(tables).not.toContain("pricing");

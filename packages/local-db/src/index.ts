@@ -9,6 +9,32 @@ export type {
   LocalDatabaseLifecycle,
 } from "./local-database";
 export * from "./cash-manager.js";
+export type { LocalAuditEventRecord, PosAuditStore } from "./audit-store.js";
+export {
+  buildOpaqueProjectionKey,
+  LocalSyncStoreError,
+  SYNC_CURSOR_MISMATCH,
+  SYNC_INVALID_INPUT,
+  SYNC_OUTBOX_LEASE_MISMATCH,
+} from "./sync-store.js";
+export type {
+  ApplyProjectionPageInput,
+  ApplyBootstrapSnapshotInput,
+  ClaimOutboxBatchInput,
+  LocalBootstrapOpaqueProjection,
+  LocalObservedSyncEventRecord,
+  LocalOpaqueProjectionEntityType,
+  LocalOpaqueProjectionRecord,
+  LocalOutboxRecord,
+  LocalOutboxSummary,
+  LocalOutboxStatus,
+  LocalPublishedRetailPriceRecord,
+  LocalSyncProjectionChange,
+  PosSyncStore,
+  SettleOutboxCommand,
+  LocalSyncConflictRecord,
+  LocalSyncStateRecord,
+} from "./sync-store.js";
 export {
   createPosLocalDatabase,
   POS_LOCAL_DATABASE_NAME,
@@ -35,6 +61,7 @@ export {
 } from "./shift-cache.js";
 export type {
   PosShiftCache,
+  LocalOpenShiftOutboxPayloadV1,
   LocalShiftRecord,
   OpenShiftInput,
 } from "./shift-cache.js";
@@ -65,6 +92,7 @@ export {
   type LocalCompletedTransactionItem,
   type LocalCompletedPayment,
   type LocalSaleStockMovement,
+  type LocalCompleteSaleOutboxPayloadV1,
   type CompletedSaleAggregate,
 } from "./sales-manager.js";
 export type {

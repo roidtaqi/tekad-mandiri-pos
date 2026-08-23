@@ -1,6 +1,8 @@
 # `@kastur/config`
 
-This private source workspace is the future boundary for small, validated, non-secret application and runtime configuration primitives that genuinely need to be shared.
+This private source workspace is the reserved boundary for small, validated,
+non-secret runtime configuration primitives that genuinely need more than one
+consumer.
 
 It must not contain:
 
@@ -10,4 +12,6 @@ It must not contain:
 - direct environment-variable access that bypasses an application's runtime boundary; or
 - mutable cross-domain global state.
 
-M0-002 intentionally exports no configuration API. A public export should be added only with a concrete consumer and validation requirement.
+It currently exports no API. Add one only with a concrete consumer and
+validation requirement; application-specific environment access stays in each
+composition root.
