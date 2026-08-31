@@ -100,10 +100,9 @@ async function main() {
     if (deviceId) {
       // Check or register device
       await client.query(
-        `INSERT INTO identity.devices (id, business_id, code, display_name, device_type, status)
+        `INSERT INTO identity.devices (id, business_id, device_key, name, platform, status)
          VALUES ($1, $2, $3, 'POS Terminal', 'PWA', 'ACTIVE')
          ON CONFLICT (id) DO UPDATE SET last_seen_at = CURRENT_TIMESTAMP WHERE identity.devices.business_id = $2`,
-        [deviceId, businessId, `DEV-${deviceId.slice(0, 8)}`],
       );
     }
 

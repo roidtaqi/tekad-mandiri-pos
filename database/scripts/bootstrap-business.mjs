@@ -153,9 +153,8 @@ async function main() {
     if (explicitDeviceId) {
       await client.query(
         `INSERT INTO identity.devices (
-           id, business_id, code, display_name, device_type, status
+           id, business_id, device_key, name, platform, status
          ) VALUES ($1, $2, $3, $4, 'PWA', 'ACTIVE')`,
-        [ids.device, ids.business, `DEV-${ids.device.slice(0, 8)}`, terminalName],
       );
     }
     await client.query(

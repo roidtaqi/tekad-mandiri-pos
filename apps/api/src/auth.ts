@@ -675,10 +675,6 @@ export async function enrollDevice(
     typeof body.device_name === "string" && body.device_name.trim() !== ""
       ? body.device_name.trim()
       : "POS Terminal";
-  const code =
-    typeof body.code === "string" && body.code.trim() !== ""
-      ? body.code.trim()
-      : `DEV-${deviceId.slice(0, 8)}`;
 
   const businessId = context.authorization.membership.business_id;
 
@@ -700,9 +696,9 @@ export async function enrollDevice(
     }
   } else {
     await database.query(
-      `INSERT INTO identity.devices (id, business_id, code, display_name, device_type, status)
+      `INSERT INTO identity.devices (id, business_id, device_key, name, platform, status)
        VALUES ($1, $2, $3, $4, 'PWA', 'ACTIVE')`,
-      [deviceId, businessId, code, deviceName],
+      [deviceId, businessId, deviceId, deviceName],
     );
   }
 
@@ -730,7 +726,7 @@ export async function enrollDevice(
       context.authorization.primary_role,
       deviceId,
       context.session_id,
-      JSON.stringify({ code, device_name: deviceName }),
+      JSON.stringify({ device_key: deviceId, device_name: deviceName, platform: "PWA" }),
       crypto.randomUUID(),
       context.authorization.authorization_version,
     ],
