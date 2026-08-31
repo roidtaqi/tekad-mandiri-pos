@@ -5,9 +5,14 @@ import { handleRequest } from "../../apps/api/src/index.js";
 import {
   buildApiEnvironment,
   createNodeHttpServer,
+  defaultApiEntryPath,
 } from "../scripts/start-api-server.mjs";
 
 describe("Node Railway API environment bridge (start-api-server.mjs)", () => {
+  it("resolves defaultApiEntryPath relative to script location, independent of process.cwd()", () => {
+    expect(defaultApiEntryPath).toMatch(/apps\/api\/dist\/index\.js$/);
+    expect(defaultApiEntryPath).not.toContain("apps/api/apps/api");
+  });
   it("forwards all canonical ApiEnvironment variables from process.env", () => {
     const sourceEnv = {
       ALLOWED_ORIGINS: "https://pos.kastur.app,https://backoffice.kastur.app",

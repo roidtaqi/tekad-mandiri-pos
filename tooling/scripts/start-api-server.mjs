@@ -1,13 +1,14 @@
 // @ts-check
 
 import { createServer } from "node:http";
-import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const defaultPort = Number(process.env.PORT || 8787);
 const defaultHost = process.env.HOST || "0.0.0.0";
 
-export const defaultApiEntryPath = resolve(process.cwd(), "apps/api/dist/index.js");
+export const defaultApiEntryPath = fileURLToPath(
+  new URL("../../apps/api/dist/index.js", import.meta.url),
+);
 
 /**
  * @param {string} [entryPath]

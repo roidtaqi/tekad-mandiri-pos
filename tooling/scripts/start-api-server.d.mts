@@ -9,6 +9,8 @@ export interface NodeApiEnvironment {
   readonly OFFLINE_AUTH_SIGNING_PRIVATE_KEY_JWK?: string;
 }
 
+export const defaultApiEntryPath: string;
+
 export function buildApiEnvironment(
   sourceEnv?: Record<string, string | undefined>,
 ): NodeApiEnvironment;
