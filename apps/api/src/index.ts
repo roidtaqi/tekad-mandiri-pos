@@ -441,8 +441,8 @@ async function routeSystemSetup(
       );
 
       await tx.query(
-        `INSERT INTO catalog.categories (id, business_id, code, name, status)
-         VALUES ($1, $2, 'GENERAL', 'Umum', 'ACTIVE')`,
+        `INSERT INTO catalog.categories (id, business_id, name, status)
+         VALUES ($1, $2, 'Umum', 'ACTIVE')`,
         [categoryId, businessId],
       );
 

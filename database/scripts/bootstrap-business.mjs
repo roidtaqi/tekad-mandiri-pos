@@ -172,8 +172,8 @@ async function main() {
       [ids.payment_method, ids.business],
     );
     await client.query(
-      `INSERT INTO catalog.categories (id, business_id, code, name, status)
-       VALUES ($1, $2, 'GENERAL', 'Umum', 'ACTIVE')`,
+      `INSERT INTO catalog.categories (id, business_id, name, status)
+       VALUES ($1, $2, 'Umum', 'ACTIVE')`,
       [ids.category, ids.business],
     );
     // If device was explicitly given, bind session to it; otherwise leave unbound so it can be used for Back Office & first POS!

@@ -1,8 +1,7 @@
-// @ts-check
-
-import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -304,5 +303,17 @@ describe("migration configuration and history validation", () => {
       ]),
     ).toContain("Summary: 1 applied, 1 pending.");
     expect(formatMigrationStatus([])).toContain("0 applied, 0 pending");
+  });
+});
+
+describe("bootstrap script schema validation", () => {
+  it("ensures bootstrap-business.mjs inserts into catalog.categories without stale code column", async () => {
+    const bootstrapScriptPath = fileURLToPath(
+      new URL("../scripts/bootstrap-business.mjs", import.meta.url),
+    );
+    const content = await readFile(bootstrapScriptPath, "utf8");
+
+    expect(content).toContain("INSERT INTO catalog.categories (id, business_id, name, status)");
+    expect(content).not.toContain("INSERT INTO catalog.categories (id, business_id, code, name, status)");
   });
 });

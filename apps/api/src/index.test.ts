@@ -454,6 +454,12 @@ describe("secure first-run setup endpoint", () => {
 
     // Verify no insert into identity.devices occurred
     expect(queries.some((q) => q.includes("INSERT INTO identity.devices"))).toBe(false);
+
+    // Verify category insert uses canonical schema without code column
+    const categoryQuery = queries.find((q) => q.includes("INSERT INTO catalog.categories"));
+    expect(categoryQuery).toBeDefined();
+    expect(categoryQuery).toContain("(id, business_id, name, status)");
+    expect(categoryQuery).not.toContain("code");
   });
 
   it("returns session_secret in first-run business setup when requested by POS client", async () => {
