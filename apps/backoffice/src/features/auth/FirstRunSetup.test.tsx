@@ -51,9 +51,10 @@ describe("FirstRunSetup Component", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Inisialisasi & Masuk ke Back Office/i }));
 
-    // 1. Verify header has X-Kastur-Setup-Token
+    // 1. Verify header has X-Kastur-Setup-Token and credentials include
     expect(mockFetch).toHaveBeenCalledTimes(1);
     expect(capturedRequest).toBeDefined();
+    expect(capturedRequest?.credentials).toBe("include");
     const headers = new Headers(capturedRequest?.headers);
     expect(headers.get("x-kastur-setup-token")).toBe("railway-secret-setup-key");
 
@@ -63,9 +64,10 @@ describe("FirstRunSetup Component", () => {
     expect(body.business_name).toBe("Toko Berkah Utama");
     expect(body.owner_password).toBe("Password123!");
 
-    // 3. Verify onComplete is triggered with the session secret immediately
+    // 3. Verify onComplete is triggered without raw secret
     await vi.waitFor(() => {
-      expect(onComplete).toHaveBeenCalledWith("secret-session-token-32-chars-long");
+      expect(onComplete).toHaveBeenCalledTimes(1);
+      expect(onComplete).toHaveBeenCalledWith();
     });
   });
 });

@@ -96,10 +96,11 @@ describe("Node Railway API environment bridge (start-api-server.mjs)", () => {
       expect(correctTokenRes.status).toBe(201);
       const correctBody = (await correctTokenRes.json()) as {
         business_name: string;
-        session_secret: string;
       };
       expect(correctBody.business_name).toBe("Toko Berkah");
-      expect(typeof correctBody.session_secret).toBe("string");
+      const cookieHeader = correctTokenRes.headers.get("set-cookie");
+      expect(cookieHeader).toContain("kastur_session=");
+      expect(cookieHeader).toContain("HttpOnly");
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }

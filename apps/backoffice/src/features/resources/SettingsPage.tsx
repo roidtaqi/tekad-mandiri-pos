@@ -20,7 +20,7 @@ export function SettingsPage() {
 
       {!canReadUsers && !canReadTerminals ? (
         <EmptyState
-          description="Sesi Anda tidak memiliki izin user.read atau settings.read."
+          description="Akun Anda tidak memiliki izin user.read atau settings.read."
           title="Akses Ditolak"
         />
       ) : (
@@ -31,7 +31,7 @@ export function SettingsPage() {
                 <Heading level={2} size="h2">
                   User Access
                 </Heading>
-                <Text tone="secondary">Lihat membership, peran, status, dan sesi pengguna.</Text>
+                <Text tone="secondary">Lihat membership, peran, status, dan riwayat login.</Text>
               </Surface>
             </Link>
           ) : null}

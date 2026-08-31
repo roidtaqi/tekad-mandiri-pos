@@ -88,7 +88,7 @@ export function SessionEntry({ overlay = false }: { readonly overlay?: boolean }
 
       setSessionSecret(loginResult.session_secret);
       setAvailableTerminals(terminals);
-      setSelectedTerminalId(firstTerminal.id);
+      setSelectedTerminalId("");
       setStep("SELECT_TERMINAL");
     } catch (err: unknown) {
       setLocalError(err instanceof Error ? err.message : "Gagal masuk ke POS.");

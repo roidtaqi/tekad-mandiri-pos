@@ -13,7 +13,7 @@ import {
 export interface FirstRunSetupProps {
   readonly apiBaseUrl?: string | undefined;
   readonly onCancel?: (() => void) | undefined;
-  readonly onComplete: (sessionSecret: string) => void;
+  readonly onComplete: () => void;
 }
 
 export function FirstRunSetup({
@@ -49,6 +49,7 @@ export function FirstRunSetup({
       const headers: Record<string, string> = {
         Accept: "application/json",
         "Content-Type": "application/json",
+        "X-Kastur-Client": "backoffice",
       };
       if (setupToken.trim() !== "") {
         headers["X-Kastur-Setup-Token"] = setupToken.trim();
@@ -57,19 +58,20 @@ export function FirstRunSetup({
       const response = await fetch(setupUrl, {
         body: JSON.stringify({
           business_name: businessName.trim(),
+          client: "backoffice",
           location_name: locationName.trim(),
           owner_email: ownerEmail.trim(),
           owner_name: ownerName.trim(),
           owner_password: ownerPassword.trim(),
           terminal_name: terminalName.trim(),
         }),
+        credentials: "include",
         headers,
         method: "POST",
       });
 
       const body = (await response.json().catch(() => null)) as {
         readonly error?: { readonly message?: string };
-        readonly session_secret?: string;
       } | null;
 
       if (!response.ok) {
@@ -79,11 +81,7 @@ export function FirstRunSetup({
         );
       }
 
-      if (typeof body?.session_secret === "string") {
-        onComplete(body.session_secret);
-      } else {
-        throw new Error("Respons setup tidak mengembalikan status autentikasi valid.");
-      }
+      onComplete();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Inisialisasi toko gagal.");
     } finally {

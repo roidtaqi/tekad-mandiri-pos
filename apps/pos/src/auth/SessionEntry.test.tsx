@@ -182,9 +182,13 @@ describe("POS SessionEntry Component", () => {
     expect(screen.getByText("Kasir 2 — Toko Utama")).toBeDefined();
     expect(screen.getByText("Kasir 3 — Cabang B")).toBeDefined();
 
+    const continueButton = screen.getByRole("button", { name: "Lanjutkan" });
+    expect(continueButton).toHaveProperty("disabled", true);
+
     // Select Kasir 2 (term-2)
     fireEvent.click(screen.getByLabelText("Kasir 2 — Toko Utama"));
-    fireEvent.click(screen.getByRole("button", { name: "Lanjutkan" }));
+    expect(continueButton).toHaveProperty("disabled", false);
+    fireEvent.click(continueButton);
 
     await waitFor(() => {
       expect(runtime.connect).toHaveBeenCalledWith({

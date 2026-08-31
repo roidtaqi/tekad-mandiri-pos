@@ -300,11 +300,15 @@ describe("secure first-run setup endpoint", () => {
     expect(response.status).toBe(201);
     const body = (await response.json()) as {
       business_name: string;
-      session_secret: string;
+      session_secret?: string;
     };
     expect(body.business_name).toBe("Toko Berkah");
-    expect(typeof body.session_secret).toBe("string");
-    expect(body.session_secret.length).toBeGreaterThan(20);
+    expect(body.session_secret).toBeUndefined(); // default setup omits session_secret
+    const setCookie = response.headers.get("set-cookie");
+    expect(setCookie).toContain("kastur_session=");
+    expect(setCookie).toContain("HttpOnly");
+    expect(setCookie).toContain("SameSite=None");
+    expect(setCookie).toContain("Secure");
   });
 
   it("rejects setup when owner_password is missing or shorter than 8 characters", async () => {
@@ -440,8 +444,54 @@ describe("secure first-run setup endpoint", () => {
     expect(response.status).toBe(201);
     const body = (await response.json()) as Record<string, unknown>;
     expect(body.device_id).toBeUndefined();
+    // Default / Back Office setup response must NOT contain session_secret
+    expect(body.session_secret).toBeUndefined();
+    const setCookie = response.headers.get("set-cookie");
+    expect(setCookie).toContain("kastur_session=");
+    expect(setCookie).toContain("HttpOnly");
+    expect(setCookie).toContain("SameSite=None");
+    expect(setCookie).toContain("Secure");
+
     // Verify no insert into identity.devices occurred
     expect(queries.some((q) => q.includes("INSERT INTO identity.devices"))).toBe(false);
+  });
+
+  it("returns session_secret in first-run business setup when requested by POS client", async () => {
+    const database: RequestDatabase = {
+      async close() {},
+      async query<TRow = Readonly<Record<string, unknown>>>(
+        text: string,
+      ): Promise<SqlQueryResult<TRow>> {
+        if (text.includes("SELECT count(*)::int AS count FROM core.businesses")) {
+          return { rowCount: 1, rows: [{ count: 0 }] as unknown as TRow[] };
+        }
+        return { rowCount: 1, rows: [] };
+      },
+      async transaction<TResult>(
+        operation: (executor: RequestDatabase) => Promise<TResult>,
+      ): Promise<TResult> {
+        return operation(this);
+      },
+    };
+
+    const response = await handleRequest(
+      new Request("https://api.kastur.test/api/v1/system/setup", {
+        body: JSON.stringify({
+          business_name: "Toko POS",
+          client: "pos",
+          owner_password: "ValidPassword123!",
+        }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      }),
+      {},
+      { database },
+    );
+
+    expect(response.status).toBe(201);
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(typeof body.session_secret).toBe("string");
+    expect((body.session_secret as string).length).toBeGreaterThan(20);
   });
 });
 
@@ -850,6 +900,39 @@ describe("device authorization and terminal binding security", () => {
     const setCookie = validLogin.headers.get("set-cookie");
     expect(setCookie).toContain(`kastur_session=${loginData.data.session_secret}`);
     expect(setCookie).toContain("HttpOnly");
+
+    // 1a. Successful Login for Back Office (omits session_secret from body, sets HttpOnly cookie)
+    const backofficeLogin = await handleRequest(
+      new Request("https://api.kastur.test/api/v1/auth/login", {
+        body: JSON.stringify({
+          client: "backoffice",
+          email: "owner@kastur.local",
+          password: "ValidPassword123!",
+        }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      }),
+      { ALLOWED_ORIGINS: "https://backoffice.kastur.app" },
+      { database: db },
+    );
+
+    expect(backofficeLogin.status).toBe(200);
+    const boData = (await backofficeLogin.json()) as {
+      readonly data: {
+        readonly business_id: string;
+        readonly session_secret?: string;
+        readonly user: { readonly id: string; readonly display_name: string };
+      };
+    };
+    expect(boData.data.business_id).toBe("biz-1");
+    expect(boData.data.user.display_name).toBe("Owner Test");
+    expect(boData.data.session_secret).toBeUndefined(); // Back Office JS must NEVER receive session_secret
+
+    const boCookie = backofficeLogin.headers.get("set-cookie");
+    expect(boCookie).toContain("kastur_session=");
+    expect(boCookie).toContain("HttpOnly");
+    expect(boCookie).toContain("SameSite=None");
+    expect(boCookie).toContain("Secure");
 
     // 2. Wrong Password -> 401
     const wrongPassword = await handleRequest(

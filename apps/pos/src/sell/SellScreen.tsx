@@ -81,7 +81,7 @@ function SellWorkspace({
     event.preventDefault();
     if (submittingRef.current || cash.evaluation.status !== "SETTLED") return;
     if (runtime.status !== "READY") {
-      setError("Sesi POS terkunci; transaksi baru diblokir.");
+      setError("POS terkunci; transaksi baru diblokir.");
       return;
     }
     if (runtime.activeShift?.status !== "OPEN") {

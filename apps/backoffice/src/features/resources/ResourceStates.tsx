@@ -14,7 +14,7 @@ export function ResourceLoading({ label }: { readonly label: string }) {
 export function PermissionDenied({ permission }: { readonly permission: string }) {
   return (
     <EmptyState
-      description={`Sesi Anda tidak memiliki izin ${permission}.`}
+      description={`Akun Anda tidak memiliki izin ${permission}.`}
       title="Akses Ditolak"
     />
   );
@@ -46,8 +46,8 @@ export function ResourceFailure({
     return (
       <EmptyState
         action={<Button onClick={logout}>Masuk kembali</Button>}
-        description="Sesi pengguna sudah berakhir atau telah dicabut."
-        title="Sesi berakhir"
+        description="Akun pengguna sudah berakhir atau telah keluar."
+        title="Akses Berakhir"
       />
     );
   }

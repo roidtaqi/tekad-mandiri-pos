@@ -47,6 +47,18 @@ export interface ApiDependencies {
   readonly database?: RequestDatabase;
 }
 
+function getSessionCookie(sessionSecret: string, isProduction: boolean): string {
+  const sameSite = isProduction ? "None" : "Lax";
+  const secure = isProduction ? "; Secure" : "";
+  return `kastur_session=${sessionSecret}; Path=/; HttpOnly; SameSite=${sameSite}; Max-Age=2592000${secure}`;
+}
+
+function getClearSessionCookie(isProduction: boolean): string {
+  const sameSite = isProduction ? "None" : "Lax";
+  const secure = isProduction ? "; Secure" : "";
+  return `kastur_session=; Path=/; HttpOnly; SameSite=${sameSite}; Max-Age=0${secure}`;
+}
+
 function isDatabaseRoute(pathname: string): boolean {
   return (
     pathname.startsWith("/api/v1/auth/") ||
@@ -103,7 +115,9 @@ async function routeAuthenticatedRequest(
     await revokeCurrentSession(database, context);
     const corsOrigin = resolveCorsOrigin(request, environment.ALLOWED_ORIGINS);
     const headers = new Headers(jsonHeaders);
-    headers.set("Set-Cookie", "kastur_session=; Path=/; HttpOnly; Max-Age=0; SameSite=Lax");
+    const isProduction =
+      environment.NODE_ENV === "production" || request.url.startsWith("https://");
+    headers.set("Set-Cookie", getClearSessionCookie(isProduction));
     if (corsOrigin !== null) {
       headers.set("access-control-allow-origin", corsOrigin);
       headers.set("access-control-allow-credentials", "true");
@@ -464,26 +478,34 @@ async function routeSystemSetup(
         ],
       );
 
+      const requestClient =
+        request.headers.get("x-kastur-client")?.toLowerCase() ||
+        (typeof body.client === "string" ? body.client.toLowerCase() : null);
+
+      const isProduction =
+        environment.NODE_ENV === "production" || request.url.startsWith("https://");
       const responseHeaders = new Headers();
-      responseHeaders.set(
-        "Set-Cookie",
-        `kastur_session=${sessionSecret}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`,
-      );
+      responseHeaders.set("Set-Cookie", getSessionCookie(sessionSecret, isProduction));
+
+      const setupResponse: Record<string, unknown> = {
+        business_id: businessId,
+        business_name: businessName,
+        location_id: locationId,
+        location_name: locationName,
+        message: "Bisnis awal berhasil diinisialisasi.",
+        owner_email: ownerEmail,
+        owner_name: ownerName,
+        owner_user_id: ownerUserId,
+        terminal_id: terminalId,
+        terminal_name: terminalName,
+      };
+
+      if (requestClient === "pos") {
+        setupResponse.session_secret = sessionSecret;
+      }
 
       return json(
-        {
-          business_id: businessId,
-          business_name: businessName,
-          location_id: locationId,
-          location_name: locationName,
-          message: "Bisnis awal berhasil diinisialisasi.",
-          owner_email: ownerEmail,
-          owner_name: ownerName,
-          owner_user_id: ownerUserId,
-          session_secret: sessionSecret,
-          terminal_id: terminalId,
-          terminal_name: terminalName,
-        },
+        setupResponse,
         { headers: responseHeaders, status: 201 },
         { allowedOrigins: environment.ALLOWED_ORIGINS, request },
       );
@@ -637,25 +659,33 @@ export async function routeLogin(
     );
   });
 
+  const requestClient =
+    request.headers.get("x-kastur-client")?.toLowerCase() ||
+    (typeof body.client === "string" ? body.client.toLowerCase() : null);
+
+  const isProduction =
+    environment.NODE_ENV === "production" || request.url.startsWith("https://");
   const responseHeaders = new Headers();
-  responseHeaders.set(
-    "Set-Cookie",
-    `kastur_session=${sessionSecret}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`,
-  );
+  responseHeaders.set("Set-Cookie", getSessionCookie(sessionSecret, isProduction));
+
+  const responseData: Record<string, unknown> = {
+    business_id: row.business_id,
+    default_location_id: row.default_location_id,
+    primary_role: row.primary_role ?? "OWNER",
+    user: {
+      display_name: row.display_name,
+      email: row.email,
+      id: row.user_id,
+    },
+  };
+
+  if (requestClient === "pos") {
+    responseData.session_secret = sessionSecret;
+  }
 
   return json(
     {
-      data: {
-        business_id: row.business_id,
-        default_location_id: row.default_location_id,
-        primary_role: row.primary_role ?? "OWNER",
-        session_secret: sessionSecret,
-        user: {
-          display_name: row.display_name,
-          email: row.email,
-          id: row.user_id,
-        },
-      },
+      data: responseData,
     },
     { headers: responseHeaders },
     { allowedOrigins: environment.ALLOWED_ORIGINS, request },

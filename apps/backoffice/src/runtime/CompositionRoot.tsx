@@ -16,14 +16,6 @@ import {
 import { HttpBackofficeResourceGateway } from "./resource-gateway";
 import { HttpBackofficeCommandGateway } from "./command-gateway";
 import { RuntimeContext, type BackofficeRuntime } from "./RuntimeContext";
-import {
-  clearSessionBearer,
-  normalizeSessionBearer,
-  readSessionBearer,
-  SessionInputError,
-  type SessionStorageLike,
-  writeSessionBearer,
-} from "./session";
 
 const defaultApiBaseUrl =
   typeof import.meta !== "undefined" &&
@@ -36,20 +28,17 @@ const defaultApiBaseUrl =
 export interface BackofficeRuntimeOptions {
   readonly apiBaseUrl?: string;
   readonly fetchImplementation?: FetchImplementation;
-  readonly sessionStorage?: SessionStorageLike;
 }
 
 interface ActiveSession {
   readonly authContext: AuthContextResponse;
-  readonly bearer: string;
   readonly client: AuthenticatedHttpClient;
 }
 
 type SessionState =
   | { readonly status: "checking" }
   | {
-      readonly errorMessage?: string;
-      readonly retryBearer?: string;
+      readonly errorMessage?: string | undefined;
       readonly status: "signed-out";
     }
   | { readonly active: ActiveSession; readonly status: "active" };
@@ -59,15 +48,11 @@ export interface BackofficeCompositionRootProps {
   readonly options?: BackofficeRuntimeOptions;
 }
 
-function browserSessionStorage(): SessionStorageLike {
-  return window.sessionStorage;
-}
-
 function publicSessionError(error: unknown): string {
-  if (error instanceof SessionInputError || error instanceof HttpError) {
+  if (error instanceof HttpError) {
     return error.message;
   }
-  return "Sesi tidak dapat diverifikasi. Silakan coba lagi.";
+  return "Akun tidak dapat diverifikasi. Silakan coba lagi.";
 }
 
 export function BackofficeCompositionRoot({
@@ -75,61 +60,67 @@ export function BackofficeCompositionRoot({
   options = {},
 }: BackofficeCompositionRootProps) {
   const effectiveApiBaseUrl = options.apiBaseUrl ?? defaultApiBaseUrl;
-  const storage = options.sessionStorage ?? browserSessionStorage();
-  const initialBearerRef = useRef<string | null>(readSessionBearer(storage));
   const generationRef = useRef(0);
   const [state, setState] = useState<SessionState>({ status: "checking" });
   const [setupRequired, setSetupRequired] = useState(false);
   const [showManualLogin, setShowManualLogin] = useState(false);
 
-  const verify = useCallback(
-    async (input: string, persist: boolean) => {
-      const generation = ++generationRef.current;
-      setState({ status: "checking" });
-
-      let bearer: string;
-      try {
-        bearer = normalizeSessionBearer(input);
-      } catch (error: unknown) {
-        if (generation === generationRef.current) {
-          setState({ errorMessage: publicSessionError(error), status: "signed-out" });
-        }
-        return;
-      }
-
-      const client = new AuthenticatedHttpClient({
-        bearer,
+  const client = useMemo(
+    () =>
+      new AuthenticatedHttpClient({
         ...(effectiveApiBaseUrl === undefined ? {} : { apiBaseUrl: effectiveApiBaseUrl }),
         ...(options.fetchImplementation === undefined
           ? {}
           : { fetchImplementation: options.fetchImplementation }),
-      });
-
-      try {
-        const authContext = await fetchAuthContext(client);
-        if (persist) {
-          writeSessionBearer(storage, bearer);
-        }
-        if (generation === generationRef.current) {
-          setState({ active: { authContext, bearer, client }, status: "active" });
-        }
-      } catch (error: unknown) {
-        if (error instanceof HttpError && error.status === 401) {
-          clearSessionBearer(storage);
-        }
-        if (generation === generationRef.current) {
-          setState({
-            errorMessage: publicSessionError(error),
-            ...(error instanceof HttpError && error.code === "NETWORK_ERROR"
-              ? { retryBearer: bearer }
-              : {}),
-            status: "signed-out",
-          });
-        }
-      }
-    },
-    [effectiveApiBaseUrl, options.fetchImplementation, storage],
+      }),
+    [effectiveApiBaseUrl, options.fetchImplementation],
   );
+
+  const checkAuth = useCallback(async () => {
+    const generation = ++generationRef.current;
+    setState({ status: "checking" });
+
+    try {
+      const authContext = await fetchAuthContext(client);
+      if (generation === generationRef.current) {
+        setState({ active: { authContext, client }, status: "active" });
+      }
+    } catch (error: unknown) {
+      if (generation === generationRef.current) {
+        setState({
+          errorMessage:
+            error instanceof HttpError && (error.status === 401 || error.status === 403)
+              ? undefined
+              : publicSessionError(error),
+          status: "signed-out",
+        });
+
+        // Check if first-run setup is required
+        const rawBase = effectiveApiBaseUrl ?? "";
+        const baseUrl =
+          rawBase.trim() === ""
+            ? ""
+            : rawBase.endsWith("/")
+              ? rawBase.slice(0, -1)
+              : rawBase;
+        const statusUrl = `${baseUrl}/api/v1/system/setup/status`;
+        const fetchImpl = options.fetchImplementation ?? fetch;
+        fetchImpl(statusUrl, { headers: { Accept: "application/json" } })
+          .then((res) => (res.ok ? res.json() : null))
+          .then((data: unknown) => {
+            if (
+              typeof data === "object" &&
+              data !== null &&
+              "initialized" in data &&
+              (data as { initialized: boolean }).initialized === false
+            ) {
+              setSetupRequired(true);
+            }
+          })
+          .catch(() => undefined);
+      }
+    }
+  }, [client, effectiveApiBaseUrl, options.fetchImplementation]);
 
   const login = useCallback(
     async ({ email, password }: { readonly email: string; readonly password: string }) => {
@@ -149,19 +140,20 @@ export function BackofficeCompositionRoot({
       try {
         const response = await fetchImpl(loginUrl, {
           body: JSON.stringify({ client: "backoffice", email, password }),
+          credentials: "include",
           headers: {
             Accept: "application/json",
             "Content-Type": "application/json",
+            "X-Kastur-Client": "backoffice",
           },
           method: "POST",
         });
 
         const body = (await response.json().catch(() => null)) as {
-          readonly data?: { readonly session_secret?: string };
           readonly error?: { readonly message?: string };
         } | null;
 
-        if (!response.ok || !body?.data?.session_secret) {
+        if (!response.ok) {
           throw new HttpError(
             response.status,
             "CREDENTIALS_INVALID",
@@ -169,8 +161,10 @@ export function BackofficeCompositionRoot({
           );
         }
 
-        const sessionSecret = body.data.session_secret;
-        await verify(sessionSecret, true);
+        const authContext = await fetchAuthContext(client);
+        if (generation === generationRef.current) {
+          setState({ active: { authContext, client }, status: "active" });
+        }
       } catch (error: unknown) {
         if (generation === generationRef.current) {
           setState({
@@ -180,38 +174,17 @@ export function BackofficeCompositionRoot({
         }
       }
     },
-    [effectiveApiBaseUrl, options.fetchImplementation, verify],
+    [client, effectiveApiBaseUrl, options.fetchImplementation],
   );
 
   useEffect(() => {
-    const initialBearer = initialBearerRef.current;
-    if (initialBearer === null) {
-      setState({ status: "signed-out" });
-      const baseUrl = effectiveApiBaseUrl ?? "";
-      const statusUrl = `${baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl}/api/v1/system/setup/status`;
-      const fetchImpl = options.fetchImplementation ?? fetch;
-      fetchImpl(statusUrl, { headers: { Accept: "application/json" } })
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data: unknown) => {
-          if (
-            typeof data === "object" &&
-            data !== null &&
-            "initialized" in data &&
-            (data as { initialized: boolean }).initialized === false
-          ) {
-            setSetupRequired(true);
-          }
-        })
-        .catch(() => undefined);
-      return;
-    }
-    void verify(initialBearer, false);
-  }, [effectiveApiBaseUrl, options.fetchImplementation, verify]);
+    void checkAuth();
+  }, [checkAuth]);
 
   if (state.status === "checking") {
     return (
       <main className="ks-root session-screen">
-        <Spinner label="Memverifikasi sesi Back Office" />
+        <Spinner label="Memverifikasi akun..." />
       </main>
     );
   }
@@ -222,7 +195,7 @@ export function BackofficeCompositionRoot({
         <FirstRunSetup
           apiBaseUrl={effectiveApiBaseUrl}
           onCancel={() => setShowManualLogin(true)}
-          onComplete={(bearer) => void verify(bearer, true)}
+          onComplete={() => void checkAuth()}
         />
       );
     }
@@ -240,7 +213,6 @@ export function BackofficeCompositionRoot({
       active={state.active}
       onLogout={() => {
         generationRef.current += 1;
-        clearSessionBearer(storage);
         setState({ status: "signed-out" });
         void state.active.client.postVoid("/api/v1/auth/logout").catch(() => undefined);
       }}
@@ -276,7 +248,7 @@ function ActiveRuntime({
       <main className="ks-root session-screen">
         <EmptyState
           action={<Button onClick={onLogout}>Keluar</Button>}
-          description="Sesi ini tidak memiliki izin workspace.backoffice.access."
+          description="Akun ini tidak memiliki akses ke Back Office."
           title="Akses Back Office ditolak"
         />
       </main>

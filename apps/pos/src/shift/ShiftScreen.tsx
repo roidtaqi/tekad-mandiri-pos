@@ -53,7 +53,7 @@ function OpenShiftPanel({
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (runtime.status !== "READY") {
-      setError("Sesi POS terkunci; pembukaan shift diblokir.");
+      setError("POS terkunci; pembukaan shift diblokir.");
       return;
     }
     setSaving(true);
@@ -125,7 +125,7 @@ function ManualCashPanel({
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (runtime.status !== "READY") {
-      setError("Sesi POS terkunci; pergerakan kas diblokir.");
+      setError("POS terkunci; pergerakan kas diblokir.");
       return;
     }
     setSaving(true);
@@ -159,7 +159,7 @@ function ManualCashPanel({
     <Surface elevation={1} padding="default">
       <Heading level={2}>Pergerakan Kas Manual</Heading>
       {options.length === 0 ? (
-        <Alert severity="INFO" title="Tidak ada tindakan kas" description="Tidak ada izin kas manual pada sesi ini." />
+        <Alert severity="INFO" title="Tidak ada tindakan kas" description="Tidak ada izin kas manual pada akun ini." />
       ) : (
         <form className="shift-form" onSubmit={(event) => void submit(event)}>
           {error ? <div className="inline-error" role="alert">{error}</div> : null}
@@ -206,7 +206,7 @@ function BlindClosePanel({
   const submitBlindCount = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (runtime.status !== "READY") {
-      setError("Sesi POS terkunci; penutupan shift diblokir.");
+      setError("POS terkunci; penutupan shift diblokir.");
       return;
     }
     setSaving(true);
@@ -267,7 +267,7 @@ function BlindClosePanel({
   const confirm = async () => {
     if (preview === null) return;
     if (runtime.status !== "READY") {
-      setError("Sesi POS terkunci; penutupan shift diblokir.");
+      setError("POS terkunci; penutupan shift diblokir.");
       return;
     }
     setSaving(true);
@@ -418,7 +418,7 @@ export function ShiftScreen() {
         <Alert
           severity="WARNING"
           title="Shift dimiliki pengguna lain"
-          description="Perangkat ini memiliki shift aktif dengan atribusi kasir lain. Tindakan kas dan penjualan diblokir untuk sesi ini."
+          description="Perangkat ini memiliki shift aktif dengan atribusi kasir lain. Tindakan kas dan penjualan diblokir untuk akun ini."
         />
       ) : runtime.activeShift === null ? (
         <OpenShiftPanel operational={operational} runtime={runtime} />

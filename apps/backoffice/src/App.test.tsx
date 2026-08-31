@@ -5,9 +5,6 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
-import { BACKOFFICE_SESSION_KEY } from "./runtime/session";
-
-const bearer = "operator-session-secret-1234567890abcdef";
 
 function authContext(permissions: readonly string[]): AuthContextResponse {
   return {
@@ -35,13 +32,25 @@ afterEach(() => {
   cleanup();
   window.localStorage.clear();
   window.sessionStorage.clear();
+  vi.restoreAllMocks();
 });
 
 describe("Back Office production runtime", () => {
-  it("shows operator login entry when the tab has no session", async () => {
+  it("shows operator login entry when initial cookie verification is unauthenticated", async () => {
+    const fetchImplementation = vi.fn(async (input: RequestInfo | URL) => {
+      const path = requestPath(input);
+      if (path === "/api/v1/auth/context") {
+        return json({ error: { code: "UNAUTHORIZED", message: "Unauthorized" } }, 401);
+      }
+      if (path === "/api/v1/system/setup/status") {
+        return json({ initialized: true });
+      }
+      throw new Error(`Unexpected request ${String(input)}`);
+    });
+
     render(
       <MemoryRouter>
-        <App />
+        <App runtimeOptions={{ fetchImplementation }} />
       </MemoryRouter>,
     );
 
@@ -50,26 +59,34 @@ describe("Back Office production runtime", () => {
     expect(screen.getByLabelText(/^Password/i)).toHaveProperty("type", "password");
   });
 
-  it("authenticates using email and password, stores session in sessionStorage, and loads overview", async () => {
+  it("authenticates using email and password without session_secret or sessionStorage, using HttpOnly cookie, and loads overview", async () => {
+    let authContextCount = 0;
     const fetchImplementation = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = requestPath(input);
+      if (path === "/api/v1/auth/context") {
+        authContextCount += 1;
+        if (authContextCount === 1) {
+          return json({ error: { code: "UNAUTHORIZED", message: "Unauthorized" } }, 401);
+        }
+        return json({ data: authContext(["workspace.backoffice.access"]) });
+      }
+      if (path === "/api/v1/system/setup/status") {
+        return json({ initialized: true });
+      }
       if (path === "/api/v1/auth/login") {
+        expect(init?.credentials).toBe("include");
         return json({
           data: {
             business_id: "business-1",
             default_location_id: "location-1",
             primary_role: "OWNER",
-            session_secret: bearer,
             user: {
               display_name: "Owner",
-              email: "owner@kastur.local",
+              email: "owner@tekadmandiri.local",
               id: "user-1",
             },
           },
         });
-      }
-      if (path === "/api/v1/auth/context") {
-        return json({ data: authContext(["workspace.backoffice.access"]) });
       }
       if (path === "/api/v1/backoffice/overview") {
         return json({
@@ -97,7 +114,7 @@ describe("Back Office production runtime", () => {
     );
 
     fireEvent.change(await screen.findByLabelText(/^Email/i), {
-      target: { value: "owner@kastur.local" },
+      target: { value: "owner@tekadmandiri.local" },
     });
     fireEvent.change(screen.getByLabelText(/^Password/i), {
       target: { value: "Password123!" },
@@ -106,23 +123,26 @@ describe("Back Office production runtime", () => {
 
     expect(await screen.findByRole("heading", { name: "Ringkasan" })).toBeDefined();
     expect(await screen.findByText(/Rp\s+125\.000/u)).toBeDefined();
-    expect(window.sessionStorage.getItem(BACKOFFICE_SESSION_KEY)).toBe(bearer);
+
+    // Verify no tokens in sessionStorage
+    expect(window.sessionStorage.length).toBe(0);
 
     const loginCall = fetchImplementation.mock.calls.find(
       ([input]) => requestPath(input) === "/api/v1/auth/login",
     );
     expect(loginCall).toBeDefined();
+    expect(loginCall?.[1]?.credentials).toBe("include");
 
-    const authCall = fetchImplementation.mock.calls.find(
+    const authCalls = fetchImplementation.mock.calls.filter(
       ([input]) => requestPath(input) === "/api/v1/auth/context",
     );
-    expect(authCall).toBeDefined();
-    const authHeaders = new Headers(authCall?.[1]?.headers);
-    expect(authHeaders.get("authorization")).toBe(`Bearer ${bearer}`);
+    expect(authCalls.length).toBeGreaterThanOrEqual(2);
+    const authHeaders = new Headers(authCalls[1]?.[1]?.headers);
+    expect(authHeaders.get("authorization")).toBeNull();
+    expect(authCalls[1]?.[1]?.credentials).toBe("include");
   });
 
-  it("restores a stored session and serves a deep-linked inventory screen", async () => {
-    window.sessionStorage.setItem(BACKOFFICE_SESSION_KEY, bearer);
+  it("restores cookie session and serves a deep-linked inventory screen", async () => {
     const fetchImplementation = vi.fn(async (input: RequestInfo | URL) => {
       const path = requestPath(input);
       if (path === "/api/v1/auth/context") {
@@ -167,7 +187,6 @@ describe("Back Office production runtime", () => {
   });
 
   it("shows refund settlement and actionable refund-record status as separate facts", async () => {
-    window.sessionStorage.setItem(BACKOFFICE_SESSION_KEY, bearer);
     const fetchImplementation = vi.fn(async (input: RequestInfo | URL) => {
       const path = requestPath(input);
       if (path === "/api/v1/auth/context") {
@@ -215,7 +234,6 @@ describe("Back Office production runtime", () => {
   });
 
   it("shows cached permission denial without requesting the protected resource", async () => {
-    window.sessionStorage.setItem(BACKOFFICE_SESSION_KEY, bearer);
     const fetchImplementation = vi.fn(async (input: RequestInfo | URL) => {
       if (requestPath(input) === "/api/v1/auth/context") {
         return json({ data: authContext(["workspace.backoffice.access"]) });
@@ -238,7 +256,6 @@ describe("Back Office production runtime", () => {
   });
 
   it("posts a focused purchasing workflow through the real command endpoint", async () => {
-    window.sessionStorage.setItem(BACKOFFICE_SESSION_KEY, bearer);
     let commandAttempts = 0;
     const fetchImplementation = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = requestPath(input);
@@ -319,8 +336,7 @@ describe("Back Office production runtime", () => {
     });
   });
 
-  it("logs out server-side best effort and removes the tab session immediately", async () => {
-    window.sessionStorage.setItem(BACKOFFICE_SESSION_KEY, bearer);
+  it("logs out server-side best effort and shows login screen", async () => {
     const fetchImplementation = vi.fn(async (input: RequestInfo | URL) => {
       const path = requestPath(input);
       if (path === "/api/v1/auth/context") {
@@ -343,7 +359,6 @@ describe("Back Office production runtime", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Keluar" }));
     expect(await screen.findByRole("heading", { name: "Masuk ke Back Office" })).toBeDefined();
-    expect(window.sessionStorage.getItem(BACKOFFICE_SESSION_KEY)).toBeNull();
     await waitFor(() => {
       expect(
         fetchImplementation.mock.calls.some(
@@ -351,29 +366,5 @@ describe("Back Office production runtime", () => {
         ),
       ).toBe(true);
     });
-  });
-
-  it("clears an invalid restored session and renders the server-safe error", async () => {
-    window.sessionStorage.setItem(BACKOFFICE_SESSION_KEY, bearer);
-    const fetchImplementation = vi.fn(async () =>
-      json(
-        {
-          error: {
-            code: "SESSION_INVALID",
-            message: "Sesi tidak valid atau sudah berakhir.",
-          },
-        },
-        401,
-      ),
-    );
-
-    render(
-      <MemoryRouter>
-        <App runtimeOptions={{ fetchImplementation }} />
-      </MemoryRouter>,
-    );
-
-    expect(await screen.findByText("Sesi tidak valid atau sudah berakhir.")).toBeDefined();
-    expect(window.sessionStorage.getItem(BACKOFFICE_SESSION_KEY)).toBeNull();
   });
 });

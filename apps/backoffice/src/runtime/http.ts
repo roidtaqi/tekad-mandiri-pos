@@ -32,7 +32,7 @@ export class HttpError extends Error {
 
 export interface AuthenticatedHttpClientOptions {
   readonly apiBaseUrl?: string;
-  readonly bearer: string;
+  readonly bearer?: string;
   readonly fetchImplementation?: FetchImplementation;
 }
 
@@ -80,10 +80,10 @@ function toHttpError(response: Response, body: unknown): HttpError {
 
 export class AuthenticatedHttpClient {
   private readonly apiBaseUrl: string | undefined;
-  private readonly bearer: string;
+  private readonly bearer: string | undefined;
   private readonly fetchImplementation: FetchImplementation;
 
-  constructor(options: AuthenticatedHttpClientOptions) {
+  constructor(options: AuthenticatedHttpClientOptions = {}) {
     this.apiBaseUrl = options.apiBaseUrl;
     this.bearer = options.bearer;
     this.fetchImplementation = options.fetchImplementation ?? globalThis.fetch.bind(globalThis);
@@ -154,13 +154,16 @@ export class AuthenticatedHttpClient {
   private async request(path: string, init: RequestInit): Promise<unknown> {
     const headers = new Headers(init.headers);
     headers.set("accept", "application/json");
-    headers.set("authorization", `Bearer ${this.bearer}`);
+    headers.set("x-kastur-client", "backoffice");
+    if (this.bearer !== undefined && this.bearer.trim() !== "") {
+      headers.set("authorization", `Bearer ${this.bearer.trim()}`);
+    }
 
     let response: Response;
     try {
       response = await this.fetchImplementation(requestUrl(path, this.apiBaseUrl), {
         ...init,
-        credentials: "same-origin",
+        credentials: "include",
         headers,
       });
     } catch (error: unknown) {

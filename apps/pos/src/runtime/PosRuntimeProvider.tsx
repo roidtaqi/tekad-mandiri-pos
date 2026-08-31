@@ -75,7 +75,7 @@ const defaultSyncState: RuntimeSyncState = {
   pendingCount: 0,
   retryableCount: 0,
   requiresReviewCount: 0,
-  message: "Belum ada sinkronisasi pada sesi ini.",
+  message: "Belum ada sinkronisasi.",
   lastSuccessAt: null,
 };
 
@@ -220,7 +220,7 @@ export function PosRuntimeProvider({
           if (bearer === null) {
             throw new SyncTransportError(
               "NETWORK",
-              "Sesi dikunci; command tetap tersimpan untuk percobaan berikutnya.",
+              "POS dikunci; transaksi tetap tersimpan untuk percobaan berikutnya.",
             );
           }
           return bearer;
@@ -305,7 +305,7 @@ export function PosRuntimeProvider({
 
       if (cleanBearer === "") {
         setStatus("ERROR");
-        setError("Email dan password atau sesi pengguna wajib diisi.");
+        setError("Email dan password wajib diisi.");
         return;
       }
 
@@ -569,7 +569,7 @@ export function PosRuntimeProvider({
       }
 
       setStatus("LOCKED");
-      setError("Autentikasi gagal atau sesi offline tidak tersedia.");
+      setError("Autentikasi gagal atau akses offline tidak tersedia.");
     },
     [
       config.apiBaseUrl,
@@ -713,10 +713,10 @@ export function PosRuntimeProvider({
   const completeReturn = useCallback(
     async (input: SubmitReturnInput): Promise<CompleteReturnOnlineResult> => {
       if (status !== "READY" || operational === null || !online) {
-        throw new Error("Return memerlukan koneksi online dan sesi POS aktif.");
+        throw new Error("Return memerlukan koneksi online dan POS aktif.");
       }
       const bearer = readSessionBearer();
-      if (bearer === null) throw new Error("Sesi pengguna terkunci.");
+      if (bearer === null) throw new Error("POS terkunci.");
       return completeReturnOnline({
         apiBaseUrl: config.apiBaseUrl,
         bearer,
@@ -736,10 +736,10 @@ export function PosRuntimeProvider({
   const searchReturnableSales = useCallback(
     async (query: string): Promise<readonly ReturnableSaleDetail[]> => {
       if (status !== "READY" || operational === null || !online) {
-        throw new Error("Pencarian transaksi Return memerlukan koneksi online dan sesi POS aktif.");
+        throw new Error("Pencarian transaksi Return memerlukan koneksi online dan POS aktif.");
       }
       const bearer = readSessionBearer();
-      if (bearer === null) throw new Error("Sesi pengguna terkunci.");
+      if (bearer === null) throw new Error("POS terkunci.");
       return searchReturnableSalesOnline({
         apiBaseUrl: config.apiBaseUrl,
         bearer,
