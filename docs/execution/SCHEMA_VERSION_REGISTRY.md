@@ -32,9 +32,9 @@ bootstrap, or rebootstrap. The recovery paths are covered by
 declares an empty V1 lifecycle database. Back Office operational truth is read
 from the authenticated API; this registry does not invent a local authority.
 
-## PostgreSQL — canonical migration head 000026
+## PostgreSQL — canonical migration head 000029
 
-There are 26 ordered SQL files. The runner records filename and SHA-256 in
+There are 29 ordered SQL files. The runner records filename and SHA-256 in
 `public.kastur_schema_migrations` and requires applied history to be the exact
 checksummed prefix. See
 [`database/migrations/README.md`](../../database/migrations/README.md) and
@@ -53,6 +53,9 @@ checksummed prefix. See
 | 000024 | [`000024`](../../database/migrations/000024_harden_costing_and_opname_authority.sql) | Explicit provisional/final cost authority, unique reconciliation roles, and Opname movement watermark. |
 | 000025 | [`000025`](../../database/migrations/000025_complete_gate_f_return_policy.sql) | Gate F Return policy/disposition override snapshots and Refund operational status. |
 | 000026 | [`000026`](../../database/migrations/000026_harden_identity_device_and_append_only_authority.sql) | Tenant-safe role/device references and database-enforced append-only Stock, Cash, Audit, and closed Shift authority. |
+| 000027 | [`000027`](../../database/migrations/000027_complete_refund_lifecycle_and_immutable_sales_facts.sql) | Gate F Refund lifecycle events, composite uniqueness, and immutable completed-sale/Return facts. |
+| 000028 | [`000028`](../../database/migrations/000028_preserve_sale_pricing_resolution_context.sql) | Preserves sale pricing resolution timestamp and trusted-clock status snapshot. |
+| 000029 | [`000029`](../../database/migrations/000029_require_owner_approved_offline_recovery.sql) | Seed `sync.recovery.import` critical permission and OWNER role preset for controlled offline recovery. |
 
 Verification commands:
 

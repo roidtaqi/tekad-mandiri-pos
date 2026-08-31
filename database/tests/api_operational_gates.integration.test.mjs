@@ -2047,7 +2047,7 @@ describeWithPostgres("authenticated API operational Gates C-F", () => {
           [saleId],
         )
       ).rows[0].count,
-    ).toBe(2);
+    ).toBe(4);
   }, 60_000);
 
   it("rejects invoice headers that do not reconcile to line facts and unsupported allocations", async () => {

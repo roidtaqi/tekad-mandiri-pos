@@ -435,14 +435,14 @@ describeWithPostgres("M1-002A: Identity Core Schema and System Roles", () => {
     await expect(client?.query(`DELETE FROM core.businesses WHERE id = $1`, [businessId])).rejects.toThrow();
   });
 
-  it("Y. permission table contains exactly 94 seeded permissions", async () => {
+  it("Y. permission table contains exactly 95 seeded permissions", async () => {
     const res = await client?.query(`SELECT * FROM identity.permissions`);
-    expect(res?.rows.length).toBe(94);
+    expect(res?.rows.length).toBe(95);
   });
 
-  it("Z. role_permissions contains exactly 180 preset mappings", async () => {
+  it("Z. role_permissions contains exactly 181 preset mappings", async () => {
     const res = await client?.query(`SELECT * FROM identity.role_permissions`);
-    expect(res?.rows.length).toBe(180);
+    expect(res?.rows.length).toBe(181);
   });
 
   it("AA. migration history includes 000001, 000002, and 000003", async () => {
