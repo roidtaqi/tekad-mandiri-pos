@@ -22,9 +22,9 @@ export function FirstRunSetup({
   onComplete,
 }: FirstRunSetupProps) {
   const [setupToken, setSetupToken] = useState("");
-  const [businessName, setBusinessName] = useState("Kastur Retail");
+  const [businessName, setBusinessName] = useState("Tekad Mandiri");
   const [ownerName, setOwnerName] = useState("Owner");
-  const [ownerEmail, setOwnerEmail] = useState("owner@kastur.local");
+  const [ownerEmail, setOwnerEmail] = useState("owner@tekadmandiri.local");
   const [ownerPassword, setOwnerPassword] = useState("");
   const [locationName, setLocationName] = useState("Toko Utama");
   const [terminalName, setTerminalName] = useState("Kasir 1");
@@ -60,7 +60,7 @@ export function FirstRunSetup({
           location_name: locationName.trim(),
           owner_email: ownerEmail.trim(),
           owner_name: ownerName.trim(),
-          owner_password: ownerPassword.trim() || "Password123!",
+          owner_password: ownerPassword.trim(),
           terminal_name: terminalName.trim(),
         }),
         headers,
@@ -97,10 +97,10 @@ export function FirstRunSetup({
         <Stack gap={4}>
           <Stack gap={1}>
             <Text as="span" size="caption" tone="muted" weight="bold">
-              Kastur Retail System
+              Tekad Mandiri
             </Text>
             <Heading id="setup-title" level={1} size="h1">
-              Siapkan Toko Kastur
+              Siapkan Tekad Mandiri
             </Heading>
             <Text tone="secondary">
               Database baru terdeteksi. Lengkapi informasi toko dan akun Owner pertama Anda.
@@ -116,8 +116,8 @@ export function FirstRunSetup({
           <form onSubmit={handleSubmit}>
             <Stack gap={3}>
               <Field
-                description="Kunci aktivasi server (KASTUR_SETUP_TOKEN) dari environment server hosting."
-                label="Kunci Aktivasi Server"
+                description="Masukkan kunci aktivasi yang diberikan saat instalasi server Tekad Mandiri."
+                label="Kunci Aktivasi"
                 required
               >
                 <Input
@@ -125,7 +125,7 @@ export function FirstRunSetup({
                   autoFocus
                   name="setup-token"
                   onChange={(event) => setSetupToken(event.target.value)}
-                  placeholder="Masukkan Kunci Aktivasi Server"
+                  placeholder="Masukkan Kunci Aktivasi"
                   required
                   spellCheck={false}
                   type="password"

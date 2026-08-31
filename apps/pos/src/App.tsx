@@ -14,7 +14,7 @@ export function PosApplication() {
     return (
       <main className="pos-splash" aria-labelledby="pos-splash-title">
         <Spinner label="Membuka database lokal" size="large" />
-        <Heading id="pos-splash-title" level={1}>Kastur POS</Heading>
+        <Heading id="pos-splash-title" level={1}>Tekad Mandiri POS</Heading>
       </main>
     );
   }

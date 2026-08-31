@@ -49,6 +49,7 @@ function lockedRuntime(): PosRuntimeValue {
     },
     recoveryRequired: false,
     connect: async () => undefined,
+    unlock: async () => undefined,
     getOperationTimestamp: () => {
       throw new Error("locked");
     },
@@ -72,7 +73,7 @@ describe("POS shell", () => {
       </MemoryRouter>,
     );
 
-    expect(markup).toContain("Kastur POS");
+    expect(markup).toContain("Tekad Mandiri POS");
   });
 
   it("unmounts every operational route while Quick Lock is active", () => {

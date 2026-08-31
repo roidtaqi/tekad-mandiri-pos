@@ -84,6 +84,7 @@ function runtimeValue(
     },
     recoveryRequired: false,
     connect: vi.fn(async () => undefined),
+    unlock: vi.fn(async () => undefined),
     getOperationTimestamp: () => "2026-08-23T01:00:00.000Z",
     quickLock: vi.fn(),
     recoverOutbox: vi.fn(async () => undefined),

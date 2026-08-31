@@ -9,9 +9,9 @@ export default defineConfig(
       VitePWA({
         registerType: "prompt",
         manifest: {
-          name: "Kastur POS",
-          short_name: "Kastur POS",
-          description: "Aplikasi kasir Kastur",
+          name: "Tekad Mandiri POS",
+          short_name: "Tekad Mandiri POS",
+          description: "Aplikasi kasir Tekad Mandiri",
           theme_color: "#f1f5f9",
           background_color: "#f1f5f9",
           display: "standalone",

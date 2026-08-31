@@ -118,6 +118,7 @@ export interface PosRuntimeValue {
   readonly sync: RuntimeSyncState;
   readonly recoveryRequired: boolean;
   connect(input: ConnectSessionInput): Promise<void>;
+  unlock(input: { readonly password: string }): Promise<void>;
   getOperationTimestamp(): string;
   quickLock(): void;
   recoverOutbox(input: RecoverOutboxInput): Promise<void>;
@@ -499,9 +500,95 @@ export function PosRuntimeProvider({
     setError(null);
   }, []);
 
+  const unlock = useCallback(
+    async ({ password }: { readonly password: string }): Promise<void> => {
+      const cleanPassword = password.trim();
+      if (cleanPassword === "") {
+        setError("Password akun wajib diisi untuk membuka kunci.");
+        return;
+      }
+      setStatus("CONNECTING");
+      setError(null);
+
+      const userEmail = operational?.auth.user.email;
+      const effectiveTerminalId = terminalId || operational?.terminal.id || "";
+      const cached = readCachedSession();
+
+      // If user email is available and online, authenticate with login API
+      if (userEmail && online) {
+        try {
+          const loginResult = await loginPosApi(
+            config.apiBaseUrl,
+            userEmail,
+            cleanPassword,
+            fetchImplementation,
+          );
+          await connect({
+            bearer: loginResult.session_secret,
+            terminalId: effectiveTerminalId,
+          });
+          return;
+        } catch (loginErr: unknown) {
+          if (!isNetworkFailure(loginErr)) {
+            setStatus("LOCKED");
+            setError(messageFromError(loginErr));
+            return;
+          }
+        }
+      }
+
+      // Offline unlock path: verify against cached session
+      if (cached !== null && config.offlineAuthorizationVerification !== null) {
+        try {
+          const context = await unlockCachedSession(
+            cleanPassword,
+            effectiveTerminalId,
+            deviceId,
+            cached,
+            config.offlineAuthorizationVerification,
+            now(),
+          );
+          syncRuntimeRef.current = createSyncRuntime(
+            context.business.id,
+            effectiveTerminalId,
+          );
+          setOperational(context);
+          await loadOperationalState(context);
+          setStatus("READY");
+          setSync((current) => ({
+            ...current,
+            status: "OFFLINE",
+            message: "Berjalan dengan izin dan data lokal yang masih berlaku.",
+          }));
+          return;
+        } catch (offlineError: unknown) {
+          setStatus("LOCKED");
+          setError(messageFromError(offlineError));
+          return;
+        }
+      }
+
+      setStatus("LOCKED");
+      setError("Autentikasi gagal atau sesi offline tidak tersedia.");
+    },
+    [
+      config.apiBaseUrl,
+      config.offlineAuthorizationVerification,
+      connect,
+      createSyncRuntime,
+      deviceId,
+      fetchImplementation,
+      loadOperationalState,
+      now,
+      online,
+      operational,
+      terminalId,
+    ],
+  );
+
   const getOperationTimestamp = useCallback((): string => {
     if (status !== "READY" || operational === null) {
-      throw new Error("Sesi POS tidak aktif; operasi lokal diblokir.");
+      throw new Error("POS terkunci; operasi lokal diblokir.");
     }
     try {
       return trustedOperationTimestamp(now());
@@ -553,7 +640,7 @@ export function PosRuntimeProvider({
         return;
       }
       if (cleanApproverBearer === "" || cleanReason.length < 10 || cleanReason.length > 500) {
-        setError("Sesi atau akun approver dan alasan recovery 10–500 karakter wajib diisi.");
+        setError("Akun Owner dan alasan recovery 10–500 karakter wajib diisi.");
         return;
       }
 
@@ -961,6 +1048,7 @@ export function PosRuntimeProvider({
       sync,
       recoveryRequired,
       connect,
+      unlock,
       getOperationTimestamp,
       quickLock,
       recoverOutbox,
@@ -989,6 +1077,7 @@ export function PosRuntimeProvider({
       status,
       sync,
       terminalId,
+      unlock,
       getOperationTimestamp,
     ],
   );

@@ -85,7 +85,7 @@ export default function UiShowcase() {
             </Heading>
             <Text size="large" tone="secondary">
               Referensi netral untuk meninjau token dan primitif. Ini bukan layar
-              bisnis Kastur.
+              bisnis Tekad Mandiri.
             </Text>
           </Stack>
 

@@ -87,6 +87,7 @@ describe("Node Railway API environment bridge (start-api-server.mjs)", () => {
       const correctTokenRes = await fetch(`${baseUrl}/api/v1/system/setup`, {
         body: JSON.stringify({
           business_name: "Toko Berkah",
+          owner_password: "ValidPassword123!",
           setup_token: "railway-production-secret-token",
         }),
         headers: { "Content-Type": "application/json" },

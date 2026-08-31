@@ -20,6 +20,7 @@ interface SessionRow {
   readonly default_location_id: string | null;
   readonly device_status: string | null;
   readonly display_name: string;
+  readonly email?: string | null | undefined;
   readonly expires_at: Date | string;
   readonly membership_id: string;
   readonly membership_status: string;
@@ -219,6 +220,7 @@ export async function authenticateRequest(
        s.expires_at,
        u.id AS user_id,
        u.display_name,
+       u.email,
        u.status AS user_status,
        m.id AS membership_id,
        m.status AS membership_status,
@@ -413,6 +415,7 @@ export async function authenticateRequest(
       server_time: new Date().toISOString(),
       user: {
         display_name: session.display_name,
+        email: session.email ?? null,
         id: session.user_id,
       },
     },

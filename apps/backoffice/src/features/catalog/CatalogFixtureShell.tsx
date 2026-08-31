@@ -30,7 +30,7 @@ export default function CatalogFixtureShell() {
           <Stack align="start" gap={4}>
             <Stack gap={1}>
               <Text as="span" size="caption" tone="muted" weight="bold">
-                Kastur Back Office
+                Tekad Mandiri Back Office
               </Text>
               <Heading id="app-title" level={1} size="display">
                 Produk active context (DEV)

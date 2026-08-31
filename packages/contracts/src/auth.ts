@@ -41,6 +41,7 @@ export interface AuthContextResponse {
   user: {
     id: string;
     display_name: string;
+    email?: string | null | undefined;
   };
   membership: {
     business_id: string;

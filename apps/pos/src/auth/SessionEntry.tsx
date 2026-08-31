@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 
 import {
   Alert,
@@ -6,43 +6,103 @@ import {
   Field,
   Heading,
   Input,
+  Radio,
+  RadioGroup,
   Surface,
   Text,
   Textarea,
 } from "@kastur/ui";
 
+import {
+  fetchAvailableTerminals,
+  loginPosApi,
+  type AvailableTerminal,
+} from "../runtime/auth-api.js";
+import { readPosRuntimeConfig } from "../runtime/config.js";
 import { usePosRuntime } from "../runtime/PosRuntimeProvider.js";
+
+type OnboardingStep = "CREDENTIALS" | "SELECT_TERMINAL";
 
 export function SessionEntry({ overlay = false }: { readonly overlay?: boolean }) {
   const runtime = usePosRuntime();
+  const [step, setStep] = useState<OnboardingStep>("CREDENTIALS");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [terminalId, setTerminalId] = useState(runtime.terminalId);
+  const [sessionSecret, setSessionSecret] = useState("");
+  const [availableTerminals, setAvailableTerminals] = useState<readonly AvailableTerminal[]>([]);
+  const [selectedTerminalId, setSelectedTerminalId] = useState("");
   const [recoveryReason, setRecoveryReason] = useState("");
+  const [localLoading, setLocalLoading] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
 
-  useEffect(() => setTerminalId(runtime.terminalId), [runtime.terminalId]);
+  const errorMessage = localError ?? runtime.error;
+  const isLoading = localLoading || runtime.status === "CONNECTING";
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const submitUnlock = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (runtime.recoveryRequired) {
-      void runtime.recoverOutbox({
-        approverEmail: email.trim(),
-        approverPassword: password,
-        reason: recoveryReason,
-      });
-    } else if (overlay) {
-      // In lock overlay, unlock with password or session
-      void runtime.connect({
-        bearer: password,
-        email: email.trim() || undefined,
+    void runtime.unlock({ password });
+  };
+
+  const submitRecovery = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    void runtime.recoverOutbox({
+      approverEmail: email.trim(),
+      approverPassword: password,
+      reason: recoveryReason,
+    });
+  };
+
+  const submitCredentials = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setLocalLoading(true);
+    setLocalError(null);
+
+    const config = readPosRuntimeConfig();
+    try {
+      const loginResult = await loginPosApi(
+        config.apiBaseUrl,
+        email.trim(),
         password,
-        terminalId: runtime.terminalId || undefined,
-      });
-    } else {
+      );
+
+      const terminals = await fetchAvailableTerminals(
+        config.apiBaseUrl,
+        loginResult.session_secret,
+      );
+
+      const firstTerminal = terminals[0];
+      if (firstTerminal === undefined || terminals.length === 0) {
+        setLocalError(
+          "Tidak ada terminal kasir aktif yang terdaftar untuk bisnis ini. Hubungi administrator.",
+        );
+        return;
+      }
+
+      if (terminals.length === 1) {
+        await runtime.connect({
+          bearer: loginResult.session_secret,
+          terminalId: firstTerminal.id,
+        });
+        return;
+      }
+
+      setSessionSecret(loginResult.session_secret);
+      setAvailableTerminals(terminals);
+      setSelectedTerminalId(firstTerminal.id);
+      setStep("SELECT_TERMINAL");
+    } catch (err: unknown) {
+      setLocalError(err instanceof Error ? err.message : "Gagal masuk ke POS.");
+    } finally {
+      setLocalLoading(false);
+    }
+  };
+
+  const submitTerminalChoice = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (sessionSecret && selectedTerminalId) {
       void runtime.connect({
-        email: email.trim() || undefined,
-        password,
-        terminalId: terminalId.trim() || undefined,
+        bearer: sessionSecret,
+        terminalId: selectedTerminalId,
       });
     }
   };
@@ -51,24 +111,24 @@ export function SessionEntry({ overlay = false }: { readonly overlay?: boolean }
     return (
       <div aria-modal="true" className="pos-lock-overlay" role="dialog">
         <Surface className="session-card" elevation={2} padding="spacious">
-          <div className="session-brand">Kastur Retail System</div>
+          <div className="session-brand">Tekad Mandiri</div>
           <Heading level={1} size="display">Persetujuan Owner Diperlukan</Heading>
           <Text tone="secondary">
             Perangkat ini memerlukan otorisasi Owner aktif untuk memulihkan transaksi lokal yang belum terkirim ke server.
           </Text>
 
-          {runtime.error ? (
-            <Alert description={runtime.error} severity="CRITICAL" title="Otorisasi belum berhasil" />
+          {errorMessage !== null ? (
+            <Alert description={errorMessage} severity="CRITICAL" title="Otorisasi belum berhasil" />
           ) : null}
 
-          <form className="session-form" onSubmit={submit}>
+          <form className="session-form" onSubmit={submitRecovery}>
             <Field label="Email Owner" required>
               <Input
                 autoComplete="email"
                 autoFocus
                 name="approver-email"
                 onChange={(event) => setEmail(event.currentTarget.value)}
-                placeholder="owner@kastur.local"
+                placeholder="owner@tekadmandiri.local"
                 required
                 type="email"
                 value={email}
@@ -103,7 +163,7 @@ export function SessionEntry({ overlay = false }: { readonly overlay?: boolean }
 
             <Button
               fullWidth
-              loading={runtime.status === "CONNECTING"}
+              loading={isLoading}
               loadingLabel="Memproses otorisasi"
               size="large"
               type="submit"
@@ -123,17 +183,17 @@ export function SessionEntry({ overlay = false }: { readonly overlay?: boolean }
     return (
       <div aria-modal="true" className="pos-lock-overlay" role="dialog">
         <Surface className="session-card" elevation={2} padding="spacious">
-          <div className="session-brand">Kastur Retail System</div>
+          <div className="session-brand">Tekad Mandiri</div>
           <Heading level={1} size="display">POS Terkunci</Heading>
           <Text tone="secondary">
-            Terkunci untuk {runtime.operational?.auth.user.display_name ?? "Kasir"}. Masukkan password untuk membuka kunci.
+            Terkunci untuk {runtime.operational?.auth.user.display_name ?? "Kasir"}. Masukkan password akun untuk membuka kunci.
           </Text>
 
-          {runtime.error ? (
-            <Alert description={runtime.error} severity="CRITICAL" title="Gagal membuka kunci" />
+          {errorMessage !== null ? (
+            <Alert description={errorMessage} severity="CRITICAL" title="Gagal membuka kunci" />
           ) : null}
 
-          <form className="session-form" onSubmit={submit}>
+          <form className="session-form" onSubmit={submitUnlock}>
             <Field label="Password Akun" required>
               <Input
                 autoComplete="current-password"
@@ -149,7 +209,7 @@ export function SessionEntry({ overlay = false }: { readonly overlay?: boolean }
 
             <Button
               fullWidth
-              loading={runtime.status === "CONNECTING"}
+              loading={isLoading}
               loadingLabel="Membuka kunci"
               size="large"
               type="submit"
@@ -165,27 +225,81 @@ export function SessionEntry({ overlay = false }: { readonly overlay?: boolean }
     );
   }
 
+  if (step === "SELECT_TERMINAL") {
+    return (
+      <div className="session-page">
+        <Surface className="session-card" elevation={2} padding="spacious">
+          <div className="session-brand">Tekad Mandiri</div>
+          <Heading level={1} size="display">Pilih Terminal</Heading>
+          <Text tone="secondary">
+            Pilih terminal kasir yang akan digunakan pada perangkat ini.
+          </Text>
+
+          {errorMessage !== null ? (
+            <Alert description={errorMessage} severity="CRITICAL" title="Gagal Memilih Terminal" />
+          ) : null}
+
+          <form className="session-form" onSubmit={submitTerminalChoice}>
+            <RadioGroup label="Terminal Tersedia" name="terminal-selection" required>
+              {availableTerminals.map((term) => (
+                <Radio
+                  checked={selectedTerminalId === term.id}
+                  key={term.id}
+                  label={`${term.name} — ${term.location_name}`}
+                  onChange={() => setSelectedTerminalId(term.id)}
+                  value={term.id}
+                />
+              ))}
+            </RadioGroup>
+
+            <Button
+              disabled={!selectedTerminalId}
+              fullWidth
+              loading={isLoading}
+              loadingLabel="Menyiapkan terminal..."
+              size="large"
+              type="submit"
+            >
+              Lanjutkan
+            </Button>
+            <Button
+              fullWidth
+              onClick={() => {
+                setStep("CREDENTIALS");
+                setSessionSecret("");
+                setLocalError(null);
+              }}
+              variant="ghost"
+            >
+              Kembali
+            </Button>
+          </form>
+        </Surface>
+      </div>
+    );
+  }
+
   return (
     <div className="session-page">
       <Surface className="session-card" elevation={2} padding="spacious">
-        <div className="session-brand">Kastur Retail System</div>
-        <Heading level={1} size="display">Kastur POS</Heading>
+        <div className="session-brand">Tekad Mandiri</div>
+        <Heading level={1} size="display">Tekad Mandiri POS</Heading>
         <Text tone="secondary">
           Masukkan email dan password akun Anda untuk menyiapkan dan membuka terminal kasir.
         </Text>
 
-        {runtime.error ? (
-          <Alert description={runtime.error} severity="CRITICAL" title="Gagal Masuk POS" />
+        {errorMessage !== null ? (
+          <Alert description={errorMessage} severity="CRITICAL" title="Gagal Masuk POS" />
         ) : null}
 
-        <form className="session-form" onSubmit={submit}>
+        <form className="session-form" onSubmit={submitCredentials}>
           <Field label="Email" required>
             <Input
               autoComplete="email"
               autoFocus
               name="email"
               onChange={(event) => setEmail(event.currentTarget.value)}
-              placeholder="kasir@kastur.local"
+              placeholder="kasir@tekadmandiri.local"
               required
               spellCheck={false}
               type="email"
@@ -208,12 +322,12 @@ export function SessionEntry({ overlay = false }: { readonly overlay?: boolean }
 
           <Button
             fullWidth
-            loading={runtime.status === "CONNECTING"}
+            loading={isLoading}
             loadingLabel="Menghubungkan ke POS"
             size="large"
             type="submit"
           >
-            Masuk dan Siapkan POS
+            Hubungkan Perangkat
           </Button>
         </form>
 

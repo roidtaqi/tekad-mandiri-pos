@@ -79,7 +79,7 @@ export function Layout() {
     <div className="ks-root backoffice-layout">
       <aside className="backoffice-sidebar">
         <Link className="backoffice-brand" to="/dashboard">
-          Kastur
+          Tekad Mandiri
           <Text as="span" size="caption" tone="muted">
             Back Office
           </Text>

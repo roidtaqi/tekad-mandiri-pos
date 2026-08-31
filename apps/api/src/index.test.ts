@@ -279,7 +279,7 @@ describe("secure first-run setup endpoint", () => {
     expect(body.error.code).toBe("SETUP_UNAUTHORIZED");
   });
 
-  it("succeeds when correct setup token is provided", async () => {
+  it("succeeds when correct setup token and valid password are provided", async () => {
     const database = new MockSetupDatabase();
     const environment = { KASTUR_SETUP_TOKEN: "super-secret-setup-key" };
 
@@ -287,6 +287,7 @@ describe("secure first-run setup endpoint", () => {
       new Request("https://api.kastur.test/api/v1/system/setup", {
         body: JSON.stringify({
           business_name: "Toko Berkah",
+          owner_password: "ValidPassword123!",
           setup_token: "super-secret-setup-key",
         }),
         headers: { "Content-Type": "application/json" },
@@ -306,6 +307,43 @@ describe("secure first-run setup endpoint", () => {
     expect(body.session_secret.length).toBeGreaterThan(20);
   });
 
+  it("rejects setup when owner_password is missing or shorter than 8 characters", async () => {
+    const database = new MockSetupDatabase();
+
+    // 1. Missing password
+    const missingPassword = await handleRequest(
+      new Request("https://api.kastur.test/api/v1/system/setup", {
+        body: JSON.stringify({
+          business_name: "Toko Berkah",
+        }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      }),
+      {},
+      { database },
+    );
+    expect(missingPassword.status).toBe(400);
+    const missingBody = (await missingPassword.json()) as { error: { code: string } };
+    expect(missingBody.error.code).toBe("VALIDATION_ERROR");
+
+    // 2. Short password (< 8 chars)
+    const shortPassword = await handleRequest(
+      new Request("https://api.kastur.test/api/v1/system/setup", {
+        body: JSON.stringify({
+          business_name: "Toko Berkah",
+          owner_password: "short",
+        }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      }),
+      {},
+      { database },
+    );
+    expect(shortPassword.status).toBe(400);
+    const shortBody = (await shortPassword.json()) as { error: { code: string } };
+    expect(shortBody.error.code).toBe("VALIDATION_ERROR");
+  });
+
   it("rejects second initialization attempt with ALREADY_INITIALIZED", async () => {
     const database = new MockSetupDatabase([{ id: "biz-1", name: "Existing Biz" }]);
     const environment = { KASTUR_SETUP_TOKEN: "super-secret-setup-key" };
@@ -314,6 +352,7 @@ describe("secure first-run setup endpoint", () => {
       new Request("https://api.kastur.test/api/v1/system/setup", {
         body: JSON.stringify({
           business_name: "Toko Kedua",
+          owner_password: "ValidPassword123!",
           setup_token: "super-secret-setup-key",
         }),
         headers: { "Content-Type": "application/json" },
@@ -348,13 +387,14 @@ describe("secure first-run setup endpoint", () => {
     expect(body.requires_setup_token).toBe(true);
     expect(body.status).toBe("NOT_INITIALIZED");
   });
+
   it("fails closed in production if KASTUR_SETUP_TOKEN is missing", async () => {
     const database = new MockSetupDatabase();
     const environment = { NODE_ENV: "production" };
 
     const response = await handleRequest(
       new Request("https://api.kastur.test/api/v1/system/setup", {
-        body: JSON.stringify({ business_name: "Toko Berkah" }),
+        body: JSON.stringify({ business_name: "Toko Berkah", owner_password: "ValidPassword123!" }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
       }),
@@ -389,7 +429,7 @@ describe("secure first-run setup endpoint", () => {
 
     const response = await handleRequest(
       new Request("https://api.kastur.test/api/v1/system/setup", {
-        body: JSON.stringify({ business_name: "Toko Baru" }),
+        body: JSON.stringify({ business_name: "Toko Baru", owner_password: "ValidPassword123!" }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
       }),

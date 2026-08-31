@@ -9,6 +9,6 @@ describe("development-only UI showcase", () => {
 
     expect(markup).toContain("KASTUR_UI_SHOWCASE_DEV_ONLY");
     expect(markup).toContain("Etalase Fondasi UI");
-    expect(markup).toContain("Ini bukan layar bisnis Kastur");
+    expect(markup).toContain("Ini bukan layar bisnis Tekad Mandiri");
   });
 });

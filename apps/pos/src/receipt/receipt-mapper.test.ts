@@ -135,7 +135,7 @@ describe("Receipt Mapper", () => {
   };
 
   const storeContext = {
-    name: "Toko Kastur",
+    name: "Toko Tekad Mandiri",
     address: "Jl. Raya No. 1",
     phone: "08123456789",
     footer: "Terima Kasih"

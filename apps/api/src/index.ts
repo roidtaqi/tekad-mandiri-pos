@@ -277,7 +277,7 @@ async function routeSystemSetup(
       throw new ApiError(
         503,
         "SETUP_DISABLED",
-        "Inisialisasi sistem di lingkungan production memerlukan konfigurasi KASTUR_SETUP_TOKEN pada server.",
+        "Inisialisasi sistem di lingkungan production memerlukan konfigurasi setup token pada server.",
       );
     }
 
@@ -292,7 +292,7 @@ async function routeSystemSetup(
       throw new ApiError(
         401,
         "SETUP_UNAUTHORIZED",
-        "Kunci inisialisasi (Setup Token) tidak valid atau belum diisi.",
+        "Kunci aktivasi server tidak valid atau belum diisi.",
       );
     }
 
@@ -309,10 +309,22 @@ async function routeSystemSetup(
         );
       }
 
+      if (
+        typeof body.owner_password !== "string" ||
+        body.owner_password.trim().length < 8
+      ) {
+        throw new ApiError(
+          400,
+          "VALIDATION_ERROR",
+          "Password pemilik (owner_password) wajib diisi minimal 8 karakter.",
+        );
+      }
+      const ownerPassword = body.owner_password.trim();
+
       const businessName =
         typeof body.business_name === "string" && body.business_name.trim() !== ""
           ? body.business_name.trim()
-          : "Kastur Retail";
+          : "Tekad Mandiri";
       const ownerName =
         typeof body.owner_name === "string" && body.owner_name.trim() !== ""
           ? body.owner_name.trim()
@@ -320,11 +332,7 @@ async function routeSystemSetup(
       const ownerEmail =
         typeof body.owner_email === "string" && body.owner_email.trim() !== ""
           ? body.owner_email.trim()
-          : "owner@kastur.local";
-      const ownerPassword =
-        typeof body.owner_password === "string" && body.owner_password.trim().length >= 8
-          ? body.owner_password.trim()
-          : "Password123!";
+          : "owner@tekadmandiri.local";
       const locationName =
         typeof body.location_name === "string" && body.location_name.trim() !== ""
           ? body.location_name.trim()

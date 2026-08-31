@@ -121,7 +121,7 @@ export async function fetchAuthContext(
     throw new PosAuthApiError(
       error !== null && typeof error.message === "string"
         ? error.message
-        : "Sesi tidak dapat diverifikasi.",
+        : "Autentikasi tidak dapat diverifikasi.",
       response.status,
       error !== null && typeof error.code === "string" ? error.code : `HTTP_${response.status}`,
     );
@@ -152,7 +152,7 @@ export async function revokePosSession(
   });
   if (!response.ok && response.status !== 401) {
     throw new PosAuthApiError(
-      "Sesi server belum dapat dicabut.",
+      "Gagal keluar dari server.",
       response.status,
       "SESSION_REVOKE_FAILED",
     );

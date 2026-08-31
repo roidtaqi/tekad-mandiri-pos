@@ -53,10 +53,14 @@ async function main() {
     strict: false,
   });
 
-  const businessName = textOrDefault(values["business-name"], "Kastur Retail");
+  const businessName = textOrDefault(values["business-name"], "Tekad Mandiri");
   const ownerName = textOrDefault(values["owner-name"], "Owner");
-  const ownerEmail = textOrDefault(values["owner-email"], "owner@kastur.local");
-  const ownerPassword = textOrDefault(values["owner-password"], "Password123!");
+  const ownerEmail = textOrDefault(values["owner-email"], "owner@tekadmandiri.local");
+  const rawPassword = values["owner-password"];
+  if (typeof rawPassword !== "string" || rawPassword.trim().length < 8) {
+    throw new Error("--owner-password is required (minimum 8 characters).");
+  }
+  const ownerPassword = rawPassword.trim();
   const locationName = textOrDefault(values["location-name"], "Toko Utama");
   const terminalName = textOrDefault(values["terminal-name"], "Kasir 1");
   const timezone = textOrDefault(values.timezone, "Asia/Makassar");
@@ -227,19 +231,12 @@ async function main() {
 
   process.stdout.write(`
 ============================================================
-  KASTUR RETAIL SYSTEM v2 — INITIAL BUSINESS READY
+  TEKAD MANDIRI RETAIL SYSTEM — INITIAL BUSINESS READY
 ============================================================
   Business:     ${businessName} (${timezone})
   Location:     ${locationName}
   Terminal:     ${terminalName}
   Owner:        ${ownerName} (${ownerEmail})
-
-  🔑 OWNER SESSION SECRET:
-  ${sessionSecret}
-
-  Gunakan kode sesi di atas untuk masuk ke:
-  - Back Office: Tempel kode sesi saat diminta
-  - POS:         Tempel kode sesi (terminal & device terikat otomatis)
 ============================================================
 `);
 }

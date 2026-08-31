@@ -33,7 +33,7 @@ export function SessionEntry({ errorMessage, loading = false, onLogin }: Session
         <Stack gap={4}>
           <Stack gap={1}>
             <Text as="span" size="caption" tone="muted" weight="bold">
-              Kastur Retail System
+              Tekad Mandiri
             </Text>
             <Heading id="session-title" level={1} size="h1">
               Masuk ke Back Office
@@ -57,7 +57,7 @@ export function SessionEntry({ errorMessage, loading = false, onLogin }: Session
                   autoFocus
                   name="email"
                   onChange={(event) => setEmail(event.target.value)}
-                  placeholder="owner@kastur.local"
+                  placeholder="owner@tekadmandiri.local"
                   required
                   spellCheck={false}
                   type="email"

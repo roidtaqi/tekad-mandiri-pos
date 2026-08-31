@@ -18,7 +18,7 @@ describe("FirstRunSetup Component", () => {
       return Response.json(
         {
           business_id: "biz-1",
-          business_name: "Toko Kastur",
+          business_name: "Toko Tekad Mandiri",
           session_secret: "secret-session-token-32-chars-long",
           terminal_name: "Kasir 1",
         },
@@ -37,7 +37,7 @@ describe("FirstRunSetup Component", () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText(/Kunci Aktivasi Server/i), {
+    fireEvent.change(screen.getByLabelText(/^Kunci Aktivasi/i), {
       target: { value: "railway-secret-setup-key" },
     });
 
