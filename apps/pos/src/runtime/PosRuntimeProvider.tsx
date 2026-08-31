@@ -289,11 +289,22 @@ export function PosRuntimeProvider({
                 cleanBearer,
                 fetchImplementation,
               );
-              if (terminals.length > 0 && terminals[0] !== undefined) {
-                cleanTerminalId = terminals[0].id;
+              if (terminals.length === 0) {
+                setStatus("ERROR");
+                setError("Tidak ada terminal kasir aktif yang tersedia.");
+                return;
               }
-            } catch {
-              // Ignore terminal lookup errors; bootstrap will resolve default terminal
+              if (terminals.length === 1 && terminals[0] !== undefined) {
+                cleanTerminalId = terminals[0].id;
+              } else {
+                setStatus("ERROR");
+                setError("Pilih terminal kasir terlebih dahulu.");
+                return;
+              }
+            } catch (terminalErr: unknown) {
+              setStatus("ERROR");
+              setError(messageFromError(terminalErr));
+              return;
             }
           }
         } catch (loginErr: unknown) {

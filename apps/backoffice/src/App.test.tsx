@@ -159,7 +159,7 @@ describe("Back Office production runtime", () => {
                 base_unit_code: "PCS",
                 location_name: "Toko Utama",
                 product_id: "product-1",
-                product_name: "Kopi Kastur",
+                product_name: "Kopi Tekad",
                 sku: "KOPI-01",
                 updated_at: "2026-08-23T02:00:00.000Z",
               },
@@ -177,7 +177,7 @@ describe("Back Office production runtime", () => {
     );
 
     expect(await screen.findByRole("heading", { name: "Inventory" })).toBeDefined();
-    expect(await screen.findByText("Kopi Kastur")).toBeDefined();
+    expect(await screen.findByText("Kopi Tekad")).toBeDefined();
     expect(screen.getByText("-2")).toBeDefined();
     expect(
       fetchImplementation.mock.calls.some(
