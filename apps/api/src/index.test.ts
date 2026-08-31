@@ -208,6 +208,32 @@ describe("system health and baseline endpoints", () => {
     );
     expect(allowed.headers.get("access-control-allow-origin")).toBe("https://pos.kastur.app");
   });
+
+  it("accepts OPTIONS CORS preflight requesting x-kastur-setup-token header", async () => {
+    const environment = {
+      ALLOWED_ORIGINS: "https://backoffice.kastur.app",
+    };
+
+    const response = await worker.fetch(
+      new Request("https://api.kastur.test/api/v1/system/setup", {
+        headers: {
+          "Access-Control-Request-Headers": "content-type,x-kastur-setup-token",
+          "Access-Control-Request-Method": "POST",
+          Origin: "https://backoffice.kastur.app",
+        },
+        method: "OPTIONS",
+      }),
+      environment,
+    );
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("access-control-allow-origin")).toBe(
+      "https://backoffice.kastur.app",
+    );
+    expect(response.headers.get("access-control-allow-headers")).toContain(
+      "x-kastur-setup-token",
+    );
+  });
 });
 
 describe("secure first-run setup endpoint", () => {

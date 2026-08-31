@@ -28,6 +28,7 @@ Seluruh layanan dibangun dari monorepo tunggal `tekad-mandiri-pos`.
 | Variabel | Keterangan | Wajib/Opsional |
 |---|---|---|
 | `DATABASE_URL` | Connection string PostgreSQL (`${{Postgres.DATABASE_URL}}`) | **Wajib** |
+| `NODE_ENV` | Mode runtime server (`production`) | **Wajib di Production** |
 | `KASTUR_SETUP_TOKEN` | Token rahasia satu kali untuk mengotorisasi inisialisasi toko awal (`POST /api/v1/system/setup`) | **Wajib di Production** |
 | `ALLOWED_ORIGINS` | Daftar domain frontend yang diizinkan (CORS), dipisahkan koma (contoh: `https://kastur-pos.up.railway.app,https://kastur-backoffice.up.railway.app`) | Disarankan di Prod |
 | `PORT` | Port server internal (disediakan otomatis oleh Railway, default `8787`) | Otomatis |
@@ -47,124 +48,105 @@ Seluruh layanan dibangun dari monorepo tunggal `tekad-mandiri-pos`.
 
 ---
 
-## 3. Langkah-Langkah Deployment Langkah Demi Langkah
+## 3. Konfigurasi Layanan Railway (Per-Service)
 
-### Langkah 1: Buat Railway Project
-1. Buka [Railway Dashboard](https://railway.com) dan buat **New Project**.
-2. Pilih **Deploy from GitHub repo** atau mulai dengan **Empty Project**.
+Deployment menggunakan konfigurasi per-service standar Railway:
 
-### Langkah 2: Tambahkan Database PostgreSQL
-1. Pada kanvas project, klik **+ New** -> **Database** -> **Add PostgreSQL**.
-2. Railway akan membuat instance PostgreSQL dan mengekspos variabel `DATABASE_URL`.
+### Layanan 1: Database PostgreSQL
+1. Di project Railway, klik **+ New** -> **Database** -> **Add PostgreSQL**.
+2. Railway otomatis mengekspos variabel `${{Postgres.DATABASE_URL}}`.
 
-### Langkah 3: Deploy `kastur-api`
-1. Klik **+ New** -> **GitHub Repo** -> Pilih repositori `tekad-mandiri-pos`.
+### Layanan 2: `kastur-api`
+1. Klik **+ New** -> **GitHub Repo** -> Pilih `tekad-mandiri-pos`.
 2. Beri nama service: `kastur-api`.
 3. Di tab **Settings**:
    - **Build Command**: `npm ci && npm run build --workspace @kastur/api`
    - **Start Command**: `npm run start --workspace @kastur/api`
+   - **Pre-deploy Command**: `npm run db:migrate` *(Kontrak migrasi otomatis kanonikal)*
    - **Healthcheck Path**: `/health/ready`
    - **Healthcheck Timeout**: `300` detik
 4. Di tab **Variables**:
    - `NODE_ENV`: `production`
    - `DATABASE_URL`: `${{Postgres.DATABASE_URL}}`
    - `KASTUR_SETUP_TOKEN`: Hasilkan string acak aman (misal: `openssl rand -hex 24`).
-   - `ALLOWED_ORIGINS`: Masukkan URL domain POS dan Back Office setelah domain terbuat.
+   - `ALLOWED_ORIGINS`: Masukkan URL publik Back Office dan POS setelah domain dibuat.
 5. Di tab **Networking**:
-   - Klik **Generate Domain** untuk mendapatkan URL publik (misal `https://kastur-api.up.railway.app`).
+   - Klik **Generate Domain** (misal `https://kastur-api.up.railway.app`).
 
-### Langkah 4: Jalankan Migrasi Database
-Jalankan migrasi PostgreSQL forward-only menggunakan Railway CLI dari terminal lokal Anda:
-
-```bash
-railway link # Pilih project Railway Anda
-railway run npm run db:migrate
-```
-
-Atau jadwalkan migrasi sebagai Pre-deploy Command di settings `kastur-api`:
-`npm run db:migrate`
-
-### Langkah 5: Deploy `kastur-backoffice`
-1. Klik **+ New** -> **GitHub Repo** -> Pilih repositori `tekad-mandiri-pos`.
+### Layanan 3: `kastur-backoffice`
+1. Klik **+ New** -> **GitHub Repo** -> Pilih `tekad-mandiri-pos`.
 2. Beri nama service: `kastur-backoffice`.
 3. Di tab **Settings**:
    - **Build Command**: `npm ci && npm run build --workspace @kastur/backoffice`
    - **Start Command**: `npm run start --workspace @kastur/backoffice`
    - **Healthcheck Path**: `/health`
 4. Di tab **Variables**:
-   - `VITE_API_BASE_URL`: `https://${{kastur-api.RAILWAY_PUBLIC_DOMAIN}}` (atau URL publik API Anda).
+   - `VITE_API_BASE_URL`: `https://${{kastur-api.RAILWAY_PUBLIC_DOMAIN}}`
 5. Di tab **Networking**:
    - Klik **Generate Domain** (misal `https://kastur-backoffice.up.railway.app`).
 
-### Langkah 6: Deploy `kastur-pos`
-1. Klik **+ New** -> **GitHub Repo** -> Pilih repositori `tekad-mandiri-pos`.
+### Layanan 4: `kastur-pos`
+1. Klik **+ New** -> **GitHub Repo** -> Pilih `tekad-mandiri-pos`.
 2. Beri nama service: `kastur-pos`.
 3. Di tab **Settings**:
    - **Build Command**: `npm ci && npm run build --workspace @kastur/pos`
    - **Start Command**: `npm run start --workspace @kastur/pos`
    - **Healthcheck Path**: `/health`
 4. Di tab **Variables**:
-   - `VITE_API_BASE_URL`: `https://${{kastur-api.RAILWAY_PUBLIC_DOMAIN}}` (atau URL publik API Anda).
+   - `VITE_API_BASE_URL`: `https://${{kastur-api.RAILWAY_PUBLIC_DOMAIN}}`
 5. Di tab **Networking**:
    - Klik **Generate Domain** (misal `https://kastur-pos.up.railway.app`).
 
 ---
 
-## 4. Inisialisasi Toko Pertama (First-Run Setup)
+## 4. Inisialisasi Toko & Onboarding POS Pertama
 
-Setelah database terhubung dan migrasi berhasil dijalankan, lakukan inisialisasi toko pertama.
-
-### Metode A: Melalui Antarmuka Back Office (Direkomendasikan)
+### Langkah 1: Inisialisasi Toko di Back Office
 1. Buka URL `kastur-backoffice` di browser.
-2. Sistem otomatis mendeteksi database baru dan menampilkan formulir **Inisialisasi Toko Baru**.
-3. Masukkan **Kunci Inisialisasi Server** (`KASTUR_SETUP_TOKEN` yang telah diset pada `kastur-api`).
+2. Formulir **Inisialisasi Toko Baru** otomatis terbuka saat database baru terdeteksi.
+3. Masukkan **Kunci Inisialisasi Server** (`KASTUR_SETUP_TOKEN` yang diset di `kastur-api`).
 4. Lengkapi nama bisnis, nama pemilik, email pemilik, lokasi toko, dan nama terminal awal ("Kasir 1").
-5. Klik **Inisialisasi & Masuk ke Back Office**.
-6. Sistem akan membuat toko dan langsung membawa Anda masuk ke dashboard Back Office.
+5. Klik **Inisialisasi & Buat Toko**.
 
-### Metode B: Melalui CLI
-```bash
-railway run npm run bootstrap
-```
-Script akan meminta konfirmasi dan mencetak rincian akun serta kode sesi awal.
+### Langkah 2: Dapatkan Kode Sesi POS
+1. Setelah inisialisasi berhasil, antarmuka Back Office menampilkan kartu sukses dengan **Kode Sesi Kasir / Owner (One-Time Secret)**.
+2. Klik tombol **Salin Kode Sesi POS**.
+3. Klik **Masuk ke Back Office Sekarang** untuk mengelola master data toko di Back Office.
 
----
-
-## 5. Menghubungkan Terminal Kasir (Kastur POS)
-
-1. Buka URL `kastur-pos` pada perangkat kasir atau browser kasir.
-2. Masukkan **Kode Sesi (Session Secret)** kasir/owner yang diperoleh saat bootstrap.
-3. **Pemilihan Terminal**:
-   - Jika hanya ada 1 terminal ("Kasir 1 — Toko Utama"), sistem otomatis memilihnya.
-   - Jika terdapat beberapa terminal, pilih terminal kasir dari dropdown yang tersedia.
+### Langkah 3: Siapkan Terminal Kasir (Kastur POS)
+1. Buka URL `kastur-pos` pada perangkat kasir.
+2. Tempel **Kode Sesi** yang telah disalin.
+3. Sistem mendeteksi terminal yang tersedia ("Kasir 1 — Toko Utama").
 4. Klik **Masuk dan Siapkan POS**.
-5. Sistem akan mendaftarkan perangkat kasir (`X-Kastur-Device-Id`) secara terotorisasi dan mengunduh data awal (catalog, pricing, shift context).
-6. Buka Shift Kasir dengan modal awal dan mulai melayani transaksi.
+5. Perangkat kasir didaftarkan secara terotorisasi dan data awal toko diunduh.
+6. Buka Shift Kasir dan mulai bertransaksi.
 
 ---
 
-## 6. Prosedur Uji Asap (Smoke Test Procedure)
+## 5. Prosedur Uji Asap (Smoke Test Procedure)
 
-Lakukan pengujian berikut untuk memvalidasi keberhasilan deployment:
-
-1. **Healthchecks**:
+1. **Liveness & Readiness**:
    - `curl -f https://<api-domain>/health` -> `{"status":"ok"}`
+   - `curl -f https://<api-domain>/health/ready` -> `{"status":"ok"}`
    - `curl -f https://<backoffice-domain>/health` -> `{"status":"ok"}`
    - `curl -f https://<pos-domain>/health` -> `{"status":"ok"}`
-2. **Setup Protection**:
+2. **Setup Token Protection**:
    - `curl -X POST https://<api-domain>/api/v1/system/setup` tanpa token -> HTTP 401 `SETUP_UNAUTHORIZED`.
-3. **POS Sale & Offline Resiliency**:
-   - Buka POS, buat transaksi tunai penjualan 1 item.
-   - Putuskan koneksi internet (DevTools Offline).
-   - Buat transaksi penjualan kedua (tersimpan di antrean lokal Outbox).
-   - Sambungkan kembali internet -> outbox terdorong otomatis ke server PostgreSQL via push sync.
-4. **Back Office Visibility**:
-   - Masuk ke Back Office -> Transaksi dan pergerakan stok muncul pada ringkasan operasional.
+3. **CORS Preflight**:
+   - `curl -X OPTIONS https://<api-domain>/api/v1/system/setup -H "Origin: https://<backoffice-domain>" -H "Access-Control-Request-Headers: content-type,x-kastur-setup-token" -H "Access-Control-Request-Method: POST"` -> HTTP 204.
+4. **Transaksi POS Offline-First**:
+   - Lakukan transaksi kasir di POS.
+   - Putuskan internet -> lakukan penjualan kedua (tersimpan di Outbox lokal).
+   - Sambungkan kembali internet -> outbox terdorong otomatis ke server.
 
 ---
 
-## 7. Pembaruan & Pemeliharaan (Redeployment)
+## 6. Pemeliharaan & Migrasi Manual
 
-- **Forward-only Migrations**: Selalu jalankan `railway run npm run db:migrate` sebelum atau selama deploy versi baru yang memiliki file migrasi baru di `database/migrations/`.
-- **Zero-Downtime Rollout**: Railway menerapkan rolling deployments; healthcheck `/health` memastikan container baru siap melayani trafik sebelum container lama dimatikan.
-- **Database Backup**: Aktifkan fitur automated daily backups pada plugin PostgreSQL di Railway Dashboard.
+- **Migrasi Otomatis**: Setiap deploy baru menjalankan `npm run db:migrate` sebagai Pre-deploy Command.
+- **Migrasi Manual (Troubleshooting/Verifikasi)**:
+  ```bash
+  railway link # Hubungkan project
+  railway run npm run db:migrate
+  ```
+- **Database Backup**: Aktifkan automated daily backups pada plugin PostgreSQL di Railway Dashboard.

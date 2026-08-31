@@ -29,6 +29,8 @@ export function FirstRunSetup({
   const [terminalName, setTerminalName] = useState("Kasir 1");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [createdSessionSecret, setCreatedSessionSecret] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -59,7 +61,6 @@ export function FirstRunSetup({
           location_name: locationName.trim(),
           owner_email: ownerEmail.trim(),
           owner_name: ownerName.trim(),
-          setup_token: setupToken.trim() !== "" ? setupToken.trim() : undefined,
           terminal_name: terminalName.trim(),
         }),
         headers,
@@ -79,7 +80,7 @@ export function FirstRunSetup({
       }
 
       if (typeof body?.session_secret === "string") {
-        onComplete(body.session_secret);
+        setCreatedSessionSecret(body.session_secret);
       } else {
         throw new Error("Respons setup tidak mengembalikan kode sesi.");
       }
@@ -88,6 +89,76 @@ export function FirstRunSetup({
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleCopySession() {
+    if (createdSessionSecret !== null && typeof navigator !== "undefined" && navigator.clipboard) {
+      void navigator.clipboard.writeText(createdSessionSecret).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 3000);
+      });
+    }
+  }
+
+  if (createdSessionSecret !== null) {
+    return (
+      <main aria-labelledby="setup-success-title" className="ks-root session-screen">
+        <Surface className="session-card" elevation={1} padding="spacious">
+          <Stack gap={4}>
+            <Stack gap={1}>
+              <Text as="span" size="caption" tone="muted" weight="bold">
+                Kastur Retail System
+              </Text>
+              <Heading id="setup-success-title" level={1} size="h1">
+                Toko Berhasil Diinisialisasi!
+              </Heading>
+              <Text tone="secondary">
+                Bisnis {businessName} telah aktif. Simpan atau salin kode sesi di bawah ini untuk menghubungkan terminal kasir (POS).
+              </Text>
+            </Stack>
+
+            <Surface className="session-code-box" elevation={0} padding="default">
+              <Stack gap={2}>
+                <Text size="caption" tone="muted" weight="bold">
+                  KODE SESI KASIR / OWNER (ONETIME SECRET):
+                </Text>
+                <code
+                  style={{
+                    backgroundColor: "var(--ks-color-surface-subtle, #f4f4f5)",
+                    borderRadius: "4px",
+                    display: "block",
+                    fontFamily: "monospace",
+                    fontSize: "0.875rem",
+                    overflowWrap: "anywhere",
+                    padding: "8px 12px",
+                    wordBreak: "break-all",
+                  }}
+                >
+                  {createdSessionSecret}
+                </code>
+                <Button onClick={handleCopySession} type="button" variant="secondary">
+                  {copied ? "✓ Kode Sesi Disalin" : "Salin Kode Sesi POS"}
+                </Button>
+              </Stack>
+            </Surface>
+
+            <Alert severity="INFO" title="Langkah Menyiapkan POS">
+              <Text>
+                Buka aplikasi <strong>Kastur POS</strong> pada perangkat kasir Anda, lalu tempel kode sesi di atas untuk menghubungkan terminal secara otomatis.
+              </Text>
+            </Alert>
+
+            <Button
+              fullWidth
+              onClick={() => onComplete(createdSessionSecret)}
+              type="button"
+            >
+              Masuk ke Back Office Sekarang
+            </Button>
+          </Stack>
+        </Surface>
+      </main>
+    );
   }
 
   return (
@@ -179,7 +250,7 @@ export function FirstRunSetup({
               </Field>
 
               <Button fullWidth loading={loading} type="submit">
-                Inisialisasi & Masuk ke Back Office
+                Inisialisasi & Buat Toko
               </Button>
 
               {onCancel !== undefined ? (

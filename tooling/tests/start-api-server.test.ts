@@ -139,6 +139,19 @@ describe("Node Railway API environment bridge (start-api-server.mjs)", () => {
       });
       expect(allowed404.status).toBe(404);
       expect(allowed404.headers.get("access-control-allow-origin")).toBe("https://backoffice.kastur.app");
+
+      // 5. Allowed origin on OPTIONS preflight with x-kastur-setup-token
+      const preflightRes = await fetch(`${baseUrl}/api/v1/system/setup`, {
+        headers: {
+          "Access-Control-Request-Headers": "content-type,x-kastur-setup-token",
+          "Access-Control-Request-Method": "POST",
+          Origin: "https://backoffice.kastur.app",
+        },
+        method: "OPTIONS",
+      });
+      expect(preflightRes.status).toBe(204);
+      expect(preflightRes.headers.get("access-control-allow-origin")).toBe("https://backoffice.kastur.app");
+      expect(preflightRes.headers.get("access-control-allow-headers")).toContain("x-kastur-setup-token");
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
