@@ -738,6 +738,235 @@ describe("device authorization and terminal binding security", () => {
     expect(contextResponse.status).toBe(200);
   });
 
+  it("enrolls a new device using canonical schema, binds session, and writes audit event", async () => {
+    const freshDeviceId = "55555555-5555-4555-8555-555555555555";
+    const queries: Array<{ text: string; values: readonly unknown[] }> = [];
+
+    const dynamicDatabase: RequestDatabase = {
+      async close() {},
+      async query<TRow = Readonly<Record<string, unknown>>>(
+        text: string,
+        values: readonly unknown[] = [],
+      ): Promise<SqlQueryResult<TRow>> {
+        queries.push({ text, values });
+        if (text.includes("FROM identity.sessions s")) {
+          return {
+            rowCount: 1,
+            rows: [{ ...activeSessionRow, session_device_id: null }] as unknown as TRow[],
+          };
+        }
+        if (text.includes("FROM identity.membership_roles")) {
+          return {
+            rowCount: 1,
+            rows: [{ code: "workspace.pos.access", effect: null }] as unknown as TRow[],
+          };
+        }
+        if (text.includes("FROM identity.devices WHERE id = $1")) {
+          return { rowCount: 0, rows: [] };
+        }
+        return { rowCount: 1, rows: [] };
+      },
+      async transaction<TResult>(
+        operation: (executor: RequestDatabase) => Promise<TResult>,
+      ): Promise<TResult> {
+        return operation(this);
+      },
+    };
+
+    const enrollResponse = await handleRequest(
+      new Request("https://api.kastur.test/api/v1/auth/enroll-device", {
+        body: JSON.stringify({
+          device_id: freshDeviceId,
+          device_name: "Tablet Kasir Utama",
+        }),
+        headers: {
+          Authorization: "Bearer mock-session-token-32-chars-long",
+          "Content-Type": "application/json",
+          "X-Kastur-Client": "pos",
+        },
+        method: "POST",
+      }),
+      {},
+      { database: dynamicDatabase },
+    );
+    expect(enrollResponse.status).toBe(201);
+    const enrollBody = (await enrollResponse.json()) as { device_id: string; status: string };
+    expect(enrollBody.device_id).toBe(freshDeviceId);
+    expect(enrollBody.status).toBe("ACTIVE");
+
+    // 1. Verify INSERT INTO identity.devices query conforms to canonical schema
+    const deviceInsert = queries.find((q) => q.text.includes("INSERT INTO identity.devices"));
+    expect(deviceInsert).toBeDefined();
+    expect(deviceInsert?.text).toContain(
+      "INSERT INTO identity.devices (id, business_id, device_key, name, platform, status)",
+    );
+    expect(deviceInsert?.text).not.toContain("code");
+    expect(deviceInsert?.text).not.toContain("display_name");
+    expect(deviceInsert?.text).not.toContain("device_type");
+    expect(deviceInsert?.values).toEqual([
+      freshDeviceId,
+      activeSessionRow.business_id,
+      freshDeviceId,
+      "Tablet Kasir Utama",
+    ]);
+
+    // 2. Verify UPDATE identity.sessions binds session to device
+    const sessionUpdate = queries.find((q) => q.text.includes("UPDATE identity.sessions SET device_id"));
+    expect(sessionUpdate).toBeDefined();
+    expect(sessionUpdate?.values[0]).toBe(freshDeviceId);
+
+    // 3. Verify DEVICE_ENROLLED audit event
+    const auditInsert = queries.find((q) => q.text.includes("INSERT INTO audit.audit_events"));
+    expect(auditInsert).toBeDefined();
+    expect(auditInsert?.text).toContain("DEVICE_ENROLLED");
+    const afterData = JSON.parse(String(auditInsert?.values[7])) as Record<string, unknown>;
+    expect(afterData.device_key).toBe(freshDeviceId);
+    expect(afterData.device_name).toBe("Tablet Kasir Utama");
+    expect(afterData.platform).toBe("PWA");
+  });
+
+  it("rejects device enrollment when device is registered to another business", async () => {
+    const database: RequestDatabase = {
+      async close() {},
+      async query<TRow = Readonly<Record<string, unknown>>>(
+        text: string,
+      ): Promise<SqlQueryResult<TRow>> {
+        if (text.includes("FROM identity.sessions s")) {
+          return { rowCount: 1, rows: [activeSessionRow as unknown as TRow] };
+        }
+        if (text.includes("FROM identity.membership_roles")) {
+          return { rowCount: 1, rows: [{ code: "workspace.pos.access", effect: null }] as unknown as TRow[] };
+        }
+        if (text.includes("FROM identity.devices WHERE id = $1")) {
+          return {
+            rowCount: 1,
+            rows: [{ business_id: "other-business-uuid", status: "ACTIVE" }] as unknown as TRow[],
+          };
+        }
+        return { rowCount: 1, rows: [] };
+      },
+      async transaction<TResult>(op: (db: RequestDatabase) => Promise<TResult>): Promise<TResult> {
+        return op(this);
+      },
+    };
+
+    const response = await handleRequest(
+      new Request("https://api.kastur.test/api/v1/auth/enroll-device", {
+        body: JSON.stringify({
+          device_id: "66666666-6666-4666-8666-666666666666",
+          device_name: "Alien Tablet",
+        }),
+        headers: {
+          Authorization: "Bearer mock-session-token-32-chars-long",
+          "Content-Type": "application/json",
+          "X-Kastur-Client": "pos",
+        },
+        method: "POST",
+      }),
+      {},
+      { database },
+    );
+    expect(response.status).toBe(403);
+    const body = (await response.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("CROSS_BUSINESS_DEVICE_FORBIDDEN");
+  });
+
+  it("rejects device enrollment when existing device status is revoked", async () => {
+    const database: RequestDatabase = {
+      async close() {},
+      async query<TRow = Readonly<Record<string, unknown>>>(
+        text: string,
+      ): Promise<SqlQueryResult<TRow>> {
+        if (text.includes("FROM identity.sessions s")) {
+          return { rowCount: 1, rows: [activeSessionRow as unknown as TRow] };
+        }
+        if (text.includes("FROM identity.membership_roles")) {
+          return { rowCount: 1, rows: [{ code: "workspace.pos.access", effect: null }] as unknown as TRow[] };
+        }
+        if (text.includes("FROM identity.devices WHERE id = $1")) {
+          return {
+            rowCount: 1,
+            rows: [{ business_id: activeSessionRow.business_id, status: "REVOKED" }] as unknown as TRow[],
+          };
+        }
+        return { rowCount: 1, rows: [] };
+      },
+      async transaction<TResult>(op: (db: RequestDatabase) => Promise<TResult>): Promise<TResult> {
+        return op(this);
+      },
+    };
+
+    const response = await handleRequest(
+      new Request("https://api.kastur.test/api/v1/auth/enroll-device", {
+        body: JSON.stringify({
+          device_id: "77777777-7777-4777-8777-777777777777",
+          device_name: "Revoked Tablet",
+        }),
+        headers: {
+          Authorization: "Bearer mock-session-token-32-chars-long",
+          "Content-Type": "application/json",
+          "X-Kastur-Client": "pos",
+        },
+        method: "POST",
+      }),
+      {},
+      { database },
+    );
+    expect(response.status).toBe(403);
+    const body = (await response.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("DEVICE_REVOKED");
+  });
+
+  it("safely reuses existing active device for same business without re-inserting", async () => {
+    const queries: string[] = [];
+    const database: RequestDatabase = {
+      async close() {},
+      async query<TRow = Readonly<Record<string, unknown>>>(
+        text: string,
+      ): Promise<SqlQueryResult<TRow>> {
+        queries.push(text);
+        if (text.includes("FROM identity.sessions s")) {
+          return { rowCount: 1, rows: [{ ...activeSessionRow, session_device_id: null }] as unknown as TRow[] };
+        }
+        if (text.includes("FROM identity.membership_roles")) {
+          return { rowCount: 1, rows: [{ code: "workspace.pos.access", effect: null }] as unknown as TRow[] };
+        }
+        if (text.includes("FROM identity.devices WHERE id = $1")) {
+          return {
+            rowCount: 1,
+            rows: [{ business_id: activeSessionRow.business_id, status: "ACTIVE" }] as unknown as TRow[],
+          };
+        }
+        return { rowCount: 1, rows: [] };
+      },
+      async transaction<TResult>(op: (db: RequestDatabase) => Promise<TResult>): Promise<TResult> {
+        return op(this);
+      },
+    };
+
+    const response = await handleRequest(
+      new Request("https://api.kastur.test/api/v1/auth/enroll-device", {
+        body: JSON.stringify({
+          device_id: "88888888-8888-4888-8888-888888888888",
+          device_name: "Existing Tablet",
+        }),
+        headers: {
+          Authorization: "Bearer mock-session-token-32-chars-long",
+          "Content-Type": "application/json",
+          "X-Kastur-Client": "pos",
+        },
+        method: "POST",
+      }),
+      {},
+      { database },
+    );
+    expect(response.status).toBe(201);
+    // Verify no INSERT query was made into identity.devices
+    expect(queries.some((q) => q.includes("INSERT INTO identity.devices"))).toBe(false);
+    // Verify session was bound
+    expect(queries.some((q) => q.includes("UPDATE identity.sessions SET device_id"))).toBe(true);
+  });
+
   it("applies configured ALLOWED_ORIGINS to error responses", async () => {
     const environment = {
       ALLOWED_ORIGINS: "https://pos.kastur.app",

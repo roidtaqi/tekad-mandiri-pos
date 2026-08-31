@@ -316,4 +316,28 @@ describe("bootstrap script schema validation", () => {
     expect(content).toContain("INSERT INTO catalog.categories (id, business_id, name, status)");
     expect(content).not.toContain("INSERT INTO catalog.categories (id, business_id, code, name, status)");
   });
+
+  it("ensures bootstrap-business.mjs inserts into identity.devices using canonical schema with bind parameters", async () => {
+    const bootstrapScriptPath = fileURLToPath(
+      new URL("../scripts/bootstrap-business.mjs", import.meta.url),
+    );
+    const content = await readFile(bootstrapScriptPath, "utf8");
+
+    expect(content).toContain("INSERT INTO identity.devices (\n           id, business_id, device_key, name, platform, status\n         ) VALUES ($1, $2, $3, $4, 'PWA', 'ACTIVE')");
+    expect(content).toContain("[ids.device, ids.business, ids.device, terminalName]");
+    expect(content).not.toContain("INSERT INTO identity.devices (\n           id, business_id, code");
+    expect(content).not.toContain("device_type");
+  });
+
+  it("ensures issue-session.mjs inserts into identity.devices using canonical schema with bind parameters", async () => {
+    const issueSessionScriptPath = fileURLToPath(
+      new URL("../scripts/issue-session.mjs", import.meta.url),
+    );
+    const content = await readFile(issueSessionScriptPath, "utf8");
+
+    expect(content).toContain("INSERT INTO identity.devices (id, business_id, device_key, name, platform, status)");
+    expect(content).toContain("[deviceId, businessId, deviceId]");
+    expect(content).not.toContain("INSERT INTO identity.devices (id, business_id, code");
+    expect(content).not.toContain("device_type");
+  });
 });

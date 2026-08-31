@@ -103,6 +103,7 @@ async function main() {
         `INSERT INTO identity.devices (id, business_id, device_key, name, platform, status)
          VALUES ($1, $2, $3, 'POS Terminal', 'PWA', 'ACTIVE')
          ON CONFLICT (id) DO UPDATE SET last_seen_at = CURRENT_TIMESTAMP WHERE identity.devices.business_id = $2`,
+        [deviceId, businessId, deviceId],
       );
     }
 
