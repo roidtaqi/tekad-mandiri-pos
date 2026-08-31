@@ -235,6 +235,60 @@ describe("system health and baseline endpoints", () => {
       "x-kastur-setup-token",
     );
   });
+
+  it("accepts realistic browser OPTIONS CORS preflight for POS sync bootstrap and push requests", async () => {
+    const environment = {
+      ALLOWED_ORIGINS: "https://pos.kastur.app",
+    };
+
+    // 1. Preflight for GET /api/v1/sync/bootstrap
+    const bootstrapPreflight = await worker.fetch(
+      new Request("https://api.kastur.test/api/v1/sync/bootstrap", {
+        headers: {
+          "Access-Control-Request-Headers":
+            "authorization, x-kastur-client, x-kastur-client-version, x-kastur-schema-version, x-kastur-device-id, x-request-id, x-terminal-id",
+          "Access-Control-Request-Method": "GET",
+          Origin: "https://pos.kastur.app",
+        },
+        method: "OPTIONS",
+      }),
+      environment,
+    );
+
+    expect(bootstrapPreflight.status).toBe(204);
+    expect(bootstrapPreflight.headers.get("access-control-allow-origin")).toBe(
+      "https://pos.kastur.app",
+    );
+    expect(bootstrapPreflight.headers.get("access-control-allow-credentials")).toBe("true");
+    const allowedHeaders = bootstrapPreflight.headers.get("access-control-allow-headers") ?? "";
+    expect(allowedHeaders).toContain("authorization");
+    expect(allowedHeaders).toContain("x-kastur-client");
+    expect(allowedHeaders).toContain("x-kastur-client-version");
+    expect(allowedHeaders).toContain("x-kastur-schema-version");
+    expect(allowedHeaders).toContain("x-kastur-device-id");
+    expect(allowedHeaders).toContain("x-request-id");
+    expect(allowedHeaders).toContain("x-terminal-id");
+    expect(allowedHeaders).toContain("idempotency-key");
+
+    // 2. Preflight for POST /api/v1/sync/push
+    const pushPreflight = await worker.fetch(
+      new Request("https://api.kastur.test/api/v1/sync/push", {
+        headers: {
+          "Access-Control-Request-Headers":
+            "content-type, authorization, idempotency-key, x-kastur-client, x-kastur-client-version, x-kastur-schema-version, x-kastur-device-id, x-request-id",
+          "Access-Control-Request-Method": "POST",
+          Origin: "https://pos.kastur.app",
+        },
+        method: "OPTIONS",
+      }),
+      environment,
+    );
+
+    expect(pushPreflight.status).toBe(204);
+    expect(pushPreflight.headers.get("access-control-allow-origin")).toBe(
+      "https://pos.kastur.app",
+    );
+  });
 });
 
 describe("secure first-run setup endpoint", () => {

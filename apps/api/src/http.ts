@@ -1,6 +1,6 @@
 export const jsonHeaders = {
   "access-control-allow-headers":
-    "content-type, authorization, x-kastur-client, x-kastur-device-id, x-kastur-setup-token, x-kastur-terminal-id, x-terminal-id",
+    "content-type, authorization, idempotency-key, x-kastur-client, x-kastur-client-version, x-kastur-schema-version, x-kastur-device-id, x-kastur-setup-token, x-kastur-terminal-id, x-terminal-id, x-request-id",
   "access-control-allow-methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
   "access-control-allow-origin": "*",
   "cache-control": "no-store",
