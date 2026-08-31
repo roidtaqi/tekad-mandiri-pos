@@ -20,8 +20,10 @@ export interface RequestDatabase extends SqlExecutor {
 }
 
 export interface ApiEnvironment {
+  readonly ALLOWED_ORIGINS?: string;
   readonly DATABASE_URL?: string;
   readonly HYPERDRIVE?: { readonly connectionString: string };
+  readonly KASTUR_SETUP_TOKEN?: string;
   /** Server-only ECDSA P-256 private JWK used to sign offline authority. */
   readonly OFFLINE_AUTH_SIGNING_PRIVATE_KEY_JWK?: string;
   readonly OFFLINE_AUTH_SIGNING_KEY_ID?: string;

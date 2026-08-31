@@ -21,6 +21,7 @@ export function FirstRunSetup({
   onCancel,
   onComplete,
 }: FirstRunSetupProps) {
+  const [setupToken, setSetupToken] = useState("");
   const [businessName, setBusinessName] = useState("Kastur Retail");
   const [ownerName, setOwnerName] = useState("Owner");
   const [ownerEmail, setOwnerEmail] = useState("owner@kastur.local");
@@ -44,18 +45,24 @@ export function FirstRunSetup({
     const setupUrl = `${baseUrl}/api/v1/system/setup`;
 
     try {
+      const headers: Record<string, string> = {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      };
+      if (setupToken.trim() !== "") {
+        headers["X-Kastur-Setup-Token"] = setupToken.trim();
+      }
+
       const response = await fetch(setupUrl, {
         body: JSON.stringify({
           business_name: businessName.trim(),
           location_name: locationName.trim(),
           owner_email: ownerEmail.trim(),
           owner_name: ownerName.trim(),
+          setup_token: setupToken.trim() !== "" ? setupToken.trim() : undefined,
           terminal_name: terminalName.trim(),
         }),
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
+        headers,
         method: "POST",
       });
 
@@ -95,7 +102,7 @@ export function FirstRunSetup({
               Inisialisasi Toko Baru
             </Heading>
             <Text tone="secondary">
-              Database baru terdeteksi. Lengkapi data awal toko dan pemilik untuk memulai.
+              Database baru terdeteksi. Masukkan kunci inisialisasi server dan lengkapi data awal toko.
             </Text>
           </Stack>
 
@@ -107,9 +114,26 @@ export function FirstRunSetup({
 
           <form onSubmit={handleSubmit}>
             <Stack gap={3}>
+              <Field
+                description="Kunci rahasia server (KASTUR_SETUP_TOKEN) dari environment Railway."
+                label="Kunci Inisialisasi Server"
+                required
+              >
+                <Input
+                  autoComplete="off"
+                  autoFocus
+                  name="setup-token"
+                  onChange={(event) => setSetupToken(event.target.value)}
+                  placeholder="Masukkan KASTUR_SETUP_TOKEN"
+                  required
+                  spellCheck={false}
+                  type="password"
+                  value={setupToken}
+                />
+              </Field>
+
               <Field label="Nama Bisnis / Toko" required>
                 <Input
-                  autoFocus
                   name="business-name"
                   onChange={(event) => setBusinessName(event.target.value)}
                   required

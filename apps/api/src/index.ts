@@ -6,8 +6,10 @@ import {
 import {
   authenticateRecoveryRequest,
   authenticateRequest,
+  enrollDevice,
   revokeCurrentSession,
   sha256Hex,
+  verifySetupToken,
 } from "./auth.js";
 import { queryBackofficeResource } from "./backoffice.js";
 import {
@@ -29,6 +31,7 @@ import {
   json,
   jsonHeaders,
   readJsonObject,
+  resolveCorsOrigin,
 } from "./http.js";
 import { getReturnableSale, listReturnableSales } from "./returns.js";
 import { acknowledge, bootstrap, pull, push } from "./sync.js";
@@ -61,15 +64,28 @@ async function routeAuthenticatedRequest(
   url: URL,
   environment: ApiEnvironment,
 ): Promise<Response> {
-  const context = await authenticateRequest(request, database, environment);
   const { pathname } = url;
 
+  if (request.method === "POST" && pathname === "/api/v1/auth/enroll-device") {
+    return await enrollDevice(request, database, environment);
+  }
+
+  const context = await authenticateRequest(request, database, environment);
+
   if (request.method === "GET" && pathname === "/api/v1/auth/context") {
-    return json({ data: context.authorization, meta: { server_time: new Date().toISOString() } });
+    return json({ data: context.authorization, meta: { server_time: new Date().toISOString() } }, {}, { allowedOrigins: environment.ALLOWED_ORIGINS, request });
   }
   if (request.method === "POST" && pathname === "/api/v1/auth/logout") {
     await revokeCurrentSession(database, context);
-    return new Response(null, { headers: jsonHeaders, status: 204 });
+    const corsOrigin = resolveCorsOrigin(request, environment.ALLOWED_ORIGINS);
+    const headers = new Headers(jsonHeaders);
+    if (corsOrigin !== null) {
+      headers.set("access-control-allow-origin", corsOrigin);
+      headers.set("vary", "Origin");
+    } else {
+      headers.delete("access-control-allow-origin");
+    }
+    return new Response(null, { headers, status: 204 });
   }
   if (request.method === "GET" && pathname === "/api/v1/auth/terminals") {
     const terminals = await database.query(
@@ -83,7 +99,7 @@ async function routeAuthenticatedRequest(
     return json({
       data: terminals.rows,
       meta: { server_time: new Date().toISOString() },
-    });
+    }, {}, { allowedOrigins: environment.ALLOWED_ORIGINS, request });
   }
   const backofficeMatch = pathname.match(/^\/api\/v1\/backoffice\/([^/]+)$/u);
   if (request.method === "GET" && backofficeMatch?.[1] !== undefined) {
@@ -95,51 +111,51 @@ async function routeAuthenticatedRequest(
         url,
       ),
       meta: { server_time: new Date().toISOString() },
-    });
+    }, {}, { allowedOrigins: environment.ALLOWED_ORIGINS, request });
   }
   if (request.method === "GET" && pathname === "/api/v1/catalog/products") {
-    return json({ data: await listProducts(database, context, url) });
+    return json({ data: await listProducts(database, context, url) }, {}, { allowedOrigins: environment.ALLOWED_ORIGINS, request });
   }
   const productMatch = pathname.match(/^\/api\/v1\/catalog\/products\/([^/]+)$/u);
   if (request.method === "GET" && productMatch?.[1] !== undefined) {
-    return json({ data: await getProduct(database, context, productMatch[1]) });
+    return json({ data: await getProduct(database, context, productMatch[1]) }, {}, { allowedOrigins: environment.ALLOWED_ORIGINS, request });
   }
   if (request.method === "POST" && pathname === "/api/v1/catalog/products") {
-    return json({ data: await createProduct(request, database, context) }, { status: 201 });
+    return json({ data: await createProduct(request, database, context) }, { status: 201 }, { allowedOrigins: environment.ALLOWED_ORIGINS, request });
   }
   if (request.method === "POST" && pathname === "/api/v1/commands") {
-    return json(await executeOnlineCommand(request, database, context));
+    return json(await executeOnlineCommand(request, database, context), {}, { allowedOrigins: environment.ALLOWED_ORIGINS, request });
   }
   if (request.method === "GET" && pathname === "/api/v1/returns/sales") {
     return json({
       data: await listReturnableSales(database, context, url),
       meta: { server_time: new Date().toISOString() },
-    });
+    }, {}, { allowedOrigins: environment.ALLOWED_ORIGINS, request });
   }
   const returnableSaleMatch = pathname.match(/^\/api\/v1\/returns\/sales\/([^/]+)$/u);
   if (request.method === "GET" && returnableSaleMatch?.[1] !== undefined) {
     return json({
       data: await getReturnableSale(database, context, returnableSaleMatch[1]),
       meta: { server_time: new Date().toISOString() },
-    });
+    }, {}, { allowedOrigins: environment.ALLOWED_ORIGINS, request });
   }
   if (request.method === "GET" && pathname === "/api/v1/catalog/categories") {
-    return json({ data: await listCatalogOptions(database, context, "categories") });
+    return json({ data: await listCatalogOptions(database, context, "categories") }, {}, { allowedOrigins: environment.ALLOWED_ORIGINS, request });
   }
   if (request.method === "GET" && pathname === "/api/v1/catalog/brands") {
-    return json({ data: await listCatalogOptions(database, context, "brands") });
+    return json({ data: await listCatalogOptions(database, context, "brands") }, {}, { allowedOrigins: environment.ALLOWED_ORIGINS, request });
   }
   if (request.method === "GET" && pathname === "/api/v1/sync/bootstrap") {
-    return json(await bootstrap(database, context, url, request));
+    return json(await bootstrap(database, context, url, request), {}, { allowedOrigins: environment.ALLOWED_ORIGINS, request });
   }
   if (request.method === "POST" && pathname === "/api/v1/sync/push") {
-    return json(await push(request, database, context, { environment }));
+    return json(await push(request, database, context, { environment }), {}, { allowedOrigins: environment.ALLOWED_ORIGINS, request });
   }
   if (request.method === "GET" && pathname === "/api/v1/sync/pull") {
-    return json(await pull(database, context, url));
+    return json(await pull(database, context, url), {}, { allowedOrigins: environment.ALLOWED_ORIGINS, request });
   }
   if (request.method === "POST" && pathname === "/api/v1/sync/ack") {
-    return json(await acknowledge(request, database, context));
+    return json(await acknowledge(request, database, context), {}, { allowedOrigins: environment.ALLOWED_ORIGINS, request });
   }
 
   throw new ApiError(404, "NOT_FOUND", "Endpoint tidak ditemukan.");
@@ -206,7 +222,7 @@ async function routeRecoveryPush(
     environment,
     recovery: true,
   });
-  return json(result);
+  return json(result, {}, { allowedOrigins: environment.ALLOWED_ORIGINS, request });
 }
 
 const OWNER_ROLE_ID = "11111111-1111-4111-8111-111111111111";
@@ -215,6 +231,7 @@ async function routeSystemSetup(
   request: Request,
   database: RequestDatabase,
   url: URL,
+  environment: ApiEnvironment,
 ): Promise<Response> {
   const { pathname } = url;
 
@@ -223,13 +240,36 @@ async function routeSystemSetup(
       `SELECT count(*)::int AS count FROM core.businesses WHERE status = 'ACTIVE'`,
     );
     const count = typeof existing.rows[0]?.count === "number" ? existing.rows[0].count : 0;
-    return json({
-      initialized: count > 0,
-      status: count > 0 ? "INITIALIZED" : "NOT_INITIALIZED",
-    });
+    const requiresSetupToken =
+      typeof environment.KASTUR_SETUP_TOKEN === "string" &&
+      environment.KASTUR_SETUP_TOKEN.trim() !== "";
+    return json(
+      {
+        initialized: count > 0,
+        requires_setup_token: requiresSetupToken,
+        status: count > 0 ? "INITIALIZED" : "NOT_INITIALIZED",
+      },
+      {},
+      { allowedOrigins: environment.ALLOWED_ORIGINS, request },
+    );
   }
 
   if (request.method === "POST" && pathname === "/api/v1/system/setup") {
+    const body = await readJsonObject(request);
+
+    // Validate one-time setup token authorization
+    const tokenHeader = request.headers.get("x-kastur-setup-token");
+    const tokenBody = typeof body.setup_token === "string" ? body.setup_token : null;
+    const providedToken = tokenHeader || tokenBody;
+
+    if (!verifySetupToken(providedToken, environment.KASTUR_SETUP_TOKEN)) {
+      throw new ApiError(
+        401,
+        "SETUP_UNAUTHORIZED",
+        "Kunci inisialisasi (Setup Token) tidak valid atau belum diisi.",
+      );
+    }
+
     return await database.transaction(async (tx) => {
       const existing = await tx.query(
         `SELECT count(*)::int AS count FROM core.businesses WHERE status = 'ACTIVE'`,
@@ -243,7 +283,6 @@ async function routeSystemSetup(
         );
       }
 
-      const body = await readJsonObject(request);
       const businessName =
         typeof body.business_name === "string" && body.business_name.trim() !== ""
           ? body.business_name.trim()
@@ -351,8 +390,8 @@ async function routeSystemSetup(
 
       await tx.query(
         `INSERT INTO identity.sessions (id, user_id, business_id, device_id, session_secret_hash, issued_at, expires_at)
-         VALUES ($1, $2, $3, NULL, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '30 days')`,
-        [sessionId, ownerUserId, businessId, sessionHash],
+         VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '30 days')`,
+        [sessionId, ownerUserId, businessId, deviceId, sessionHash],
       );
 
       await tx.query(
@@ -386,6 +425,7 @@ async function routeSystemSetup(
         {
           business_id: businessId,
           business_name: businessName,
+          device_id: deviceId,
           location_id: locationId,
           location_name: locationName,
           message: "Bisnis awal berhasil diinisialisasi.",
@@ -397,6 +437,7 @@ async function routeSystemSetup(
           terminal_name: terminalName,
         },
         { status: 201 },
+        { allowedOrigins: environment.ALLOWED_ORIGINS, request },
       );
     });
   }
@@ -412,8 +453,15 @@ export async function handleRequest(
   const url = new URL(request.url);
 
   if (request.method === "OPTIONS") {
+    const corsOrigin = resolveCorsOrigin(request, environment.ALLOWED_ORIGINS);
     const headers = new Headers(jsonHeaders);
     headers.set("access-control-max-age", "86400");
+    if (corsOrigin !== null) {
+      headers.set("access-control-allow-origin", corsOrigin);
+      headers.set("vary", "Origin");
+    } else {
+      headers.delete("access-control-allow-origin");
+    }
     return new Response(null, {
       headers,
       status: 204,
@@ -426,16 +474,37 @@ export async function handleRequest(
       url.pathname === "/api/health")
   ) {
     const body = { status: "ok" } satisfies SystemHealthResponse;
-    return json(body);
+    return json(body, {}, { allowedOrigins: environment.ALLOWED_ORIGINS, request });
+  }
+  if (request.method === "GET" && url.pathname === "/api/v1/system/health") {
+    const hasDatabase =
+      Boolean(environment.HYPERDRIVE?.connectionString) ||
+      Boolean(environment.DATABASE_URL?.trim());
+    if (!hasDatabase && dependencies.database === undefined) {
+      return json(
+        { reason: "DATABASE_NOT_CONFIGURED", status: "unhealthy" },
+        { status: 503 },
+        { allowedOrigins: environment.ALLOWED_ORIGINS, request },
+      );
+    }
+    return json(
+      { status: "ok" },
+      {},
+      { allowedOrigins: environment.ALLOWED_ORIGINS, request },
+    );
   }
   if (request.method === "GET" && url.pathname === "/api/v1/system/compatibility") {
-    return json({
-      api_version: "v1",
-      current_schema_version: 1,
-      maintenance_mode: false,
-      minimum_client_version: "0.1.0",
-      supported_schema_versions: [1],
-    });
+    return json(
+      {
+        api_version: "v1",
+        current_schema_version: 1,
+        maintenance_mode: false,
+        minimum_client_version: "0.1.0",
+        supported_schema_versions: [1],
+      },
+      {},
+      { allowedOrigins: environment.ALLOWED_ORIGINS, request },
+    );
   }
   if (!isDatabaseRoute(url.pathname)) {
     return errorResponse(new ApiError(404, "NOT_FOUND", "Endpoint tidak ditemukan."));
@@ -449,7 +518,7 @@ export async function handleRequest(
       ownsDatabase = true;
     }
     if (url.pathname.startsWith("/api/v1/system/setup")) {
-      return await routeSystemSetup(request, database, url);
+      return await routeSystemSetup(request, database, url, environment);
     }
     if (
       request.method === "POST" &&

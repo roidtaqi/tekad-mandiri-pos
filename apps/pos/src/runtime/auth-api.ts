@@ -104,3 +104,65 @@ export async function revokePosSession(
     );
   }
 }
+
+export interface AvailableTerminal {
+  readonly id: string;
+  readonly name: string;
+  readonly code: string;
+  readonly location_name: string;
+  readonly location_id: string;
+}
+
+export async function fetchAvailableTerminals(
+  apiBaseUrl: string,
+  bearer: string,
+  fetchImplementation: typeof fetch = fetch,
+): Promise<readonly AvailableTerminal[]> {
+  const response = await fetchImplementation(new URL("/api/v1/auth/terminals", apiBaseUrl), {
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${bearer}`,
+      "X-Kastur-Client": "pos",
+    },
+  });
+  const body: unknown = await response.json().catch(() => null);
+  if (!response.ok || !isRecord(body) || !Array.isArray(body.data)) {
+    return [];
+  }
+  return body.data as unknown as AvailableTerminal[];
+}
+
+export async function enrollDeviceApi(
+  apiBaseUrl: string,
+  bearer: string,
+  deviceId: string,
+  deviceName?: string,
+  code?: string,
+  fetchImplementation: typeof fetch = fetch,
+): Promise<void> {
+  const response = await fetchImplementation(new URL("/api/v1/auth/enroll-device", apiBaseUrl), {
+    body: JSON.stringify({
+      code,
+      device_id: deviceId,
+      device_name: deviceName,
+    }),
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${bearer}`,
+      "Content-Type": "application/json",
+      "X-Kastur-Client": "pos",
+    },
+    method: "POST",
+  });
+  if (!response.ok) {
+    const body: unknown = await response.json().catch(() => null);
+    const error = isRecord(body) && isRecord(body.error) ? body.error : null;
+    throw new PosAuthApiError(
+      error !== null && typeof error.message === "string"
+        ? error.message
+        : "Gagal mendaftarkan perangkat.",
+      response.status,
+      error !== null && typeof error.code === "string" ? error.code : `HTTP_${response.status}`,
+    );
+  }
+}

@@ -8,6 +8,7 @@
     "dev": "vite",
     "dev:ui": "vite --open /__ui",
     "preview": "vite preview",
+    "start": "node ../../tooling/scripts/serve-spa.mjs dist",
     "test": "vitest run --config ../../vitest.config.ts --project backoffice",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit"
   },

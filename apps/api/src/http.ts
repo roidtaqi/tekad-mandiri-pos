@@ -35,12 +35,58 @@ export class ApiError extends Error {
   }
 }
 
-export function json(data: unknown, init: ResponseInit = {}): Response {
+export function resolveCorsOrigin(
+  request: Request,
+  allowedOriginsConfig?: string,
+): string | null {
+  const origin = request.headers.get("origin");
+  if (!origin) return null;
+
+  if (typeof allowedOriginsConfig === "string" && allowedOriginsConfig.trim() !== "") {
+    const origins = allowedOriginsConfig
+      .split(",")
+      .map((s) => s.trim().toLowerCase())
+      .filter((s) => s.length > 0);
+    const normalizedOrigin = origin.toLowerCase();
+    if (origins.includes(normalizedOrigin) || origins.includes("*")) {
+      return origin;
+    }
+    if (
+      /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/iu.test(origin)
+    ) {
+      return origin;
+    }
+    return null;
+  }
+
+  return origin;
+}
+
+export interface JsonResponseOptions {
+  readonly allowedOrigins?: string | undefined;
+  readonly request?: Request | undefined;
+}
+
+export function json(
+  data: unknown,
+  init: ResponseInit = {},
+  options?: JsonResponseOptions,
+): Response {
   const headers = new Headers(init.headers);
 
   for (const [name, value] of Object.entries(jsonHeaders)) {
     if (!headers.has(name)) {
       headers.set(name, value);
+    }
+  }
+
+  if (options?.request !== undefined) {
+    const corsOrigin = resolveCorsOrigin(options.request, options.allowedOrigins);
+    if (corsOrigin !== null) {
+      headers.set("access-control-allow-origin", corsOrigin);
+      headers.set("vary", "Origin");
+    } else {
+      headers.delete("access-control-allow-origin");
     }
   }
 

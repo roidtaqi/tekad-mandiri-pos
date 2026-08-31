@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 
+import type { AuthContextResponse } from "@kastur/contracts";
 import {
   createPosLocalDatabase,
   type LocalShiftRecord,
@@ -23,6 +24,7 @@ import {
 } from "@kastur/sync-client";
 
 import {
+  enrollDeviceApi,
   fetchAuthContext,
   PosAuthApiError,
   revokePosSession,
@@ -277,13 +279,40 @@ export function PosRuntimeProvider({
       const cached = readCachedSession();
 
       try {
-        const auth = await fetchAuthContext(
-          config.apiBaseUrl,
-          cleanBearer,
-          deviceId,
-          cleanTerminalId === "" ? undefined : cleanTerminalId,
-          fetchImplementation,
-        );
+        let auth: AuthContextResponse;
+        try {
+          auth = await fetchAuthContext(
+            config.apiBaseUrl,
+            cleanBearer,
+            deviceId,
+            cleanTerminalId === "" ? undefined : cleanTerminalId,
+            fetchImplementation,
+          );
+        } catch (fetchErr: unknown) {
+          if (
+            fetchErr instanceof PosAuthApiError &&
+            fetchErr.status === 403 &&
+            fetchErr.code === "DEVICE_BINDING_REQUIRED"
+          ) {
+            await enrollDeviceApi(
+              config.apiBaseUrl,
+              cleanBearer,
+              deviceId,
+              "POS Terminal",
+              undefined,
+              fetchImplementation,
+            );
+            auth = await fetchAuthContext(
+              config.apiBaseUrl,
+              cleanBearer,
+              deviceId,
+              cleanTerminalId === "" ? undefined : cleanTerminalId,
+              fetchImplementation,
+            );
+          } else {
+            throw fetchErr;
+          }
+        }
         if (!auth.permissions.includes("workspace.pos.access")) {
           throw new PosAuthApiError(
             "Pengguna tidak memiliki izin workspace.pos.access.",

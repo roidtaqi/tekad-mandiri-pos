@@ -6,20 +6,41 @@ import {
   Field,
   Heading,
   Input,
+  Select,
   Surface,
   Text,
   Textarea,
 } from "@kastur/ui";
 
+import {
+  fetchAvailableTerminals,
+  type AvailableTerminal,
+} from "../runtime/auth-api.js";
+import { readPosRuntimeConfig } from "../runtime/config.js";
 import { usePosRuntime } from "../runtime/PosRuntimeProvider.js";
 
 export function SessionEntry({ overlay = false }: { readonly overlay?: boolean }) {
   const runtime = usePosRuntime();
   const [bearer, setBearer] = useState("");
   const [terminalId, setTerminalId] = useState(runtime.terminalId);
+  const [availableTerminals, setAvailableTerminals] = useState<readonly AvailableTerminal[]>([]);
   const [recoveryReason, setRecoveryReason] = useState("");
 
   useEffect(() => setTerminalId(runtime.terminalId), [runtime.terminalId]);
+
+  useEffect(() => {
+    if (bearer.trim().length > 10 && !runtime.recoveryRequired && !overlay) {
+      const config = readPosRuntimeConfig();
+      fetchAvailableTerminals(config.apiBaseUrl, bearer.trim())
+        .then((terms) => {
+          setAvailableTerminals(terms);
+          if (terms.length === 1 && terms[0] !== undefined) {
+            setTerminalId(terms[0].id);
+          }
+        })
+        .catch(() => undefined);
+    }
+  }, [bearer, overlay, runtime.recoveryRequired]);
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -70,14 +91,45 @@ export function SessionEntry({ overlay = false }: { readonly overlay?: boolean }
           </Field>
           {runtime.recoveryRequired ? (
             <Field
-              label="Alasan recovery"
               description="Wajib 10–500 karakter dan dicatat pada audit server."
+              label="Alasan recovery"
               required
             >
               <Textarea
                 name="recovery-reason"
                 onChange={(event) => setRecoveryReason(event.currentTarget.value)}
                 value={recoveryReason}
+              />
+            </Field>
+          ) : availableTerminals.length > 1 ? (
+            <Field
+              description={`Perangkat lokal: ${runtime.deviceId}`}
+              label="Pilih Terminal Kasir"
+              required
+            >
+              <Select
+                name="terminal-id"
+                onChange={(event) => setTerminalId(event.currentTarget.value)}
+                required
+                value={terminalId}
+              >
+                <option value="">-- Pilih Terminal Kasir --</option>
+                {availableTerminals.map((term) => (
+                  <option key={term.id} value={term.id}>
+                    {term.name} — {term.location_name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          ) : availableTerminals.length === 1 ? (
+            <Field
+              description={`Perangkat lokal: ${runtime.deviceId}`}
+              label="Terminal Kasir"
+            >
+              <Input
+                disabled
+                name="terminal-display"
+                value={`${availableTerminals[0]?.name ?? "Kasir"} — ${availableTerminals[0]?.location_name ?? "Toko Utama"}`}
               />
             </Field>
           ) : (

@@ -5,7 +5,7 @@ import {
 } from "@kastur/contracts";
 
 import type { ApiEnvironment, RequestDatabase, SqlExecutor } from "./database.js";
-import { ApiError } from "./http.js";
+import { ApiError, json, readJsonObject } from "./http.js";
 import {
   issueOfflineAuthorizationGrant,
   verifyOfflineAuthorizationGrant,
@@ -158,10 +158,35 @@ export async function sha256Hex(value: string): Promise<string> {
     .join("");
 }
 
+export function constantTimeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
+}
+
+export function verifySetupToken(
+  providedToken: string | null | undefined,
+  configuredToken: string | null | undefined,
+): boolean {
+  if (!configuredToken || configuredToken.trim() === "") {
+    return true;
+  }
+  if (!providedToken || providedToken.trim() === "") {
+    return false;
+  }
+  return constantTimeEqual(providedToken.trim(), configuredToken.trim());
+}
+
 export async function authenticateRequest(
   request: Request,
   executor: SqlExecutor,
   environment: ApiEnvironment = {},
+  options: { readonly skipDeviceCheck?: boolean } = {},
 ): Promise<AuthenticatedRequestContext> {
   const selectedTerminalHeader = request.headers.get("x-terminal-id");
   const selectedTerminalId =
@@ -228,37 +253,29 @@ export async function authenticateRequest(
   }
   const requestClient = request.headers.get("x-kastur-client")?.toLowerCase();
   const requestDeviceId = request.headers.get("x-kastur-device-id");
-  if (requestClient === "pos") {
+  if (requestClient === "pos" && !options.skipDeviceCheck) {
+    if (
+      requestDeviceId === null ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+        requestDeviceId.trim(),
+      )
+    ) {
+      throw new ApiError(
+        403,
+        "DEVICE_BINDING_REQUIRED",
+        "Header X-Kastur-Device-Id wajib berupa UUID perangkat valid.",
+      );
+    }
+
     if (session.session_device_id === null) {
-      if (
-        requestDeviceId !== null &&
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
-          requestDeviceId,
-        )
-      ) {
-        await executor.query(
-          `INSERT INTO identity.devices (id, business_id, code, display_name, device_type, status)
-           VALUES ($1, $2, $3, 'POS Terminal', 'PWA', 'ACTIVE')
-           ON CONFLICT (id) DO UPDATE SET last_seen_at = CURRENT_TIMESTAMP WHERE identity.devices.business_id = $2`,
-          [requestDeviceId, session.business_id, `DEV-${requestDeviceId.slice(0, 8)}`],
-        );
-        await executor.query(
-          `UPDATE identity.sessions SET device_id = $1 WHERE id = $2`,
-          [requestDeviceId, session.session_id],
-        );
-        session = {
-          ...session,
-          device_status: "ACTIVE",
-          session_device_id: requestDeviceId,
-        };
-      } else {
-        throw new ApiError(
-          403,
-          "DEVICE_BINDING_REQUIRED",
-          "Sesi POS wajib terikat ke perangkat aktif.",
-        );
-      }
-    } else if (requestDeviceId !== session.session_device_id) {
+      throw new ApiError(
+        403,
+        "DEVICE_BINDING_REQUIRED",
+        "Sesi POS wajib terikat ke perangkat aktif. Daftarkan perangkat terlebih dahulu.",
+      );
+    }
+
+    if (requestDeviceId.trim() !== session.session_device_id) {
       throw new ApiError(
         403,
         "DEVICE_CONTEXT_MISMATCH",
@@ -276,20 +293,29 @@ export async function authenticateRequest(
   let resolvedTerminalId = selectedTerminalId;
   if (requestClient === "pos") {
     if (resolvedTerminalId === null) {
-      const defaultTerminal = await executor.query<{ readonly id: string }>(
-        `SELECT id FROM core.terminals
+      const activeTerminals = await executor.query<{ readonly id: string; readonly name: string }>(
+        `SELECT id, name FROM core.terminals
          WHERE business_id = $1 AND location_id = $2 AND status = 'ACTIVE'
-         ORDER BY code ASC LIMIT 1`,
+         ORDER BY code ASC`,
         [session.business_id, session.default_location_id],
       );
-      if (defaultTerminal.rows[0] === undefined) {
+
+      if (activeTerminals.rowCount === 0) {
         throw new ApiError(
           403,
-          "TERMINAL_CONTEXT_REQUIRED",
-          "Sesi POS wajib memilih terminal aktif.",
+          "TERMINAL_NOT_CONFIGURED",
+          "Tidak ada terminal aktif pada lokasi ini.",
         );
       }
-      resolvedTerminalId = defaultTerminal.rows[0].id;
+      if (activeTerminals.rowCount === 1) {
+        resolvedTerminalId = activeTerminals.rows[0]!.id;
+      } else {
+        throw new ApiError(
+          403,
+          "TERMINAL_SELECTION_REQUIRED",
+          "Terdapat lebih dari satu terminal aktif. Harap pilih terminal kasir.",
+        );
+      }
     } else {
       await requireActiveTerminal(
         executor,
@@ -594,4 +620,108 @@ export async function revokeCurrentSession(
       ],
     );
   });
+}
+
+export async function enrollDevice(
+  request: Request,
+  database: RequestDatabase,
+  environment: ApiEnvironment,
+): Promise<Response> {
+  const context = await authenticateRequest(request, database, environment, {
+    skipDeviceCheck: true,
+  });
+
+  if (!context.authorization.permissions.includes("workspace.pos.access")) {
+    throw new ApiError(
+      403,
+      "PERMISSION_DENIED",
+      "Pengguna tidak memiliki izin untuk mendaftarkan perangkat POS.",
+    );
+  }
+
+  const body = await readJsonObject(request);
+  const rawDeviceId = body.device_id;
+  if (
+    typeof rawDeviceId !== "string" ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+      rawDeviceId.trim(),
+    )
+  ) {
+    throw new ApiError(400, "VALIDATION_ERROR", "device_id wajib berupa UUID valid.");
+  }
+  const deviceId = rawDeviceId.trim();
+  const deviceName =
+    typeof body.device_name === "string" && body.device_name.trim() !== ""
+      ? body.device_name.trim()
+      : "POS Terminal";
+  const code =
+    typeof body.code === "string" && body.code.trim() !== ""
+      ? body.code.trim()
+      : `DEV-${deviceId.slice(0, 8)}`;
+
+  const businessId = context.authorization.membership.business_id;
+
+  const existingDevice = await database.query<{ readonly business_id: string; readonly status: string }>(
+    `SELECT business_id, status FROM identity.devices WHERE id = $1`,
+    [deviceId],
+  );
+
+  if (existingDevice.rowCount && existingDevice.rowCount > 0) {
+    if (existingDevice.rows[0]?.business_id !== businessId) {
+      throw new ApiError(
+        403,
+        "CROSS_BUSINESS_DEVICE_FORBIDDEN",
+        "Perangkat sudah terdaftar pada bisnis lain.",
+      );
+    }
+    if (existingDevice.rows[0]?.status !== "ACTIVE") {
+      throw new ApiError(403, "DEVICE_REVOKED", "Perangkat telah dicabut.");
+    }
+  } else {
+    await database.query(
+      `INSERT INTO identity.devices (id, business_id, code, display_name, device_type, status)
+       VALUES ($1, $2, $3, $4, 'PWA', 'ACTIVE')`,
+      [deviceId, businessId, code, deviceName],
+    );
+  }
+
+  await database.query(
+    `UPDATE identity.sessions SET device_id = $1 WHERE id = $2 AND (device_id IS NULL OR device_id = $1)`,
+    [deviceId, context.session_id],
+  );
+
+  await database.query(
+    `INSERT INTO audit.audit_events (
+       id, business_id, location_id, actor_type, actor_user_id,
+       actor_role_snapshot, action, entity_type, entity_id, occurred_at,
+       device_id, session_id, reason, after_data, correlation_id,
+       authorization_version
+     ) VALUES (
+       $1, $2, $3, 'USER', $4, $5, 'DEVICE_ENROLLED',
+       'device', $6, CURRENT_TIMESTAMP, $6, $7,
+       'Explicit device enrollment command', $8::jsonb, $9, $10
+     )`,
+    [
+      crypto.randomUUID(),
+      businessId,
+      context.authorization.default_location_id,
+      context.authorization.user.id,
+      context.authorization.primary_role,
+      deviceId,
+      context.session_id,
+      JSON.stringify({ code, device_name: deviceName }),
+      crypto.randomUUID(),
+      context.authorization.authorization_version,
+    ],
+  );
+
+  return json(
+    {
+      business_id: businessId,
+      device_id: deviceId,
+      message: "Perangkat berhasil didaftarkan dan diikat ke sesi.",
+      status: "ACTIVE",
+    },
+    { status: 201 },
+  );
 }
