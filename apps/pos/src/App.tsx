@@ -8,7 +8,7 @@ import {
   usePosRuntime,
 } from "./runtime/PosRuntimeProvider.js";
 
-function PosApplication() {
+export function PosApplication() {
   const runtime = usePosRuntime();
   if (runtime.status === "INITIALIZING" && runtime.operational === null) {
     return (
@@ -20,19 +20,13 @@ function PosApplication() {
   }
 
   if (runtime.operational === null) return <SessionEntry />;
-  const locked = runtime.status !== "READY";
+  if (runtime.status !== "READY") return <SessionEntry overlay />;
   return (
-    <>
-      <div
-        aria-hidden={locked || undefined}
-        className={locked ? "pos-runtime is-locked" : "pos-runtime"}
-      >
-        <PosRoutes
-          key={`${runtime.operational.business.id}:${runtime.operational.auth.user.id}`}
-        />
-      </div>
-      {locked ? <SessionEntry overlay /> : null}
-    </>
+    <div className="pos-runtime">
+      <PosRoutes
+        key={`${runtime.operational.business.id}:${runtime.operational.auth.user.id}`}
+      />
+    </div>
   );
 }
 

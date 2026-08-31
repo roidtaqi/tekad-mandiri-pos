@@ -31,7 +31,12 @@ import {
 } from "./http.js";
 import { getReturnableSale, listReturnableSales } from "./returns.js";
 import { acknowledge, bootstrap, pull, push } from "./sync.js";
-import { arrayValue, objectValue } from "./validation.js";
+import {
+  arrayValue,
+  objectValue,
+  stringValue,
+  uuidValue,
+} from "./validation.js";
 
 export interface ApiDependencies {
   readonly database?: RequestDatabase;
@@ -130,23 +135,62 @@ async function routeRecoveryPush(
   environment: ApiEnvironment,
 ): Promise<Response> {
   const body = await readJsonObject(request.clone());
-  const firstCommand = arrayValue(body.commands, "commands")[0];
+  const commands = arrayValue(body.commands, "commands");
+  const firstCommand = commands[0];
   if (firstCommand === undefined) {
     throw new ApiError(400, "BATCH_SIZE_INVALID", "Batch recovery tidak boleh kosong.");
   }
+  const batchId = uuidValue(body.batch_id, "batch_id");
+  const recoveryReason = stringValue(body.recovery_reason, "recovery_reason").trim();
+  if (recoveryReason.length < 10 || recoveryReason.length > 500) {
+    throw new ApiError(
+      400,
+      "RECOVERY_REASON_INVALID",
+      "Alasan recovery wajib berisi 10–500 karakter.",
+    );
+  }
   const command = objectValue(firstCommand, "commands[0]");
+  const approver = await authenticateRequest(request, database, environment);
   const context = await authenticateRecoveryRequest(
-    request,
     database,
     environment,
+    approver,
     command.offline_authorization,
   );
-  return json(
-    await push(request, database, context, {
-      environment,
-      recovery: true,
-    }),
+  await database.query(
+    `INSERT INTO audit.audit_events (
+       id, business_id, location_id, actor_type, actor_user_id,
+       actor_role_snapshot, action, entity_type, entity_id, occurred_at,
+       recorded_at, device_id, session_id, reason, after_data,
+       correlation_id, authorization_version
+     ) VALUES (
+       $1, $2, $3, 'USER', $4, $5, 'OFFLINE_FACT_RECOVERY_APPROVED',
+       'sync_recovery_batch', $6, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP,
+       $7, $8, $9, $10::jsonb, $6, $11
+     )`,
+    [
+      crypto.randomUUID(),
+      approver.authorization.membership.business_id,
+      context.authorization.default_location_id,
+      approver.authorization.user.id,
+      approver.authorization.primary_role,
+      batchId,
+      context.device_id,
+      approver.session_id,
+      recoveryReason,
+      JSON.stringify({
+        command_count: commands.length,
+        historical_session_id: context.session_id,
+        terminal_id: context.selected_terminal_id,
+      }),
+      approver.authorization.authorization_version,
+    ],
   );
+  const result = await push(request, database, context, {
+    environment,
+    recovery: true,
+  });
+  return json(result);
 }
 
 export async function handleRequest(

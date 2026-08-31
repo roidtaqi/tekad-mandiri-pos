@@ -135,6 +135,7 @@ const EXPECTED_PERMISSIONS = [
   { o: '000000000092', c: 'return.reject', r: 'MEDIUM', d: 'Reject a Return request with an auditable reason.' },
   { o: '000000000093', c: 'refund.override_amount', r: 'CRITICAL', d: 'Override the historically calculated refundable amount.' },
   { o: '000000000094', c: 'refund.reverse', r: 'CRITICAL', d: 'Reverse a completed Refund through a controlled event.' },
+  { o: '000000000095', c: 'sync.recovery.import', r: 'CRITICAL', d: 'Approve a controlled import of signed offline facts from a revoked POS context.' },
 ];
 
 const ADMIN_EXCLUSIONS = new Set([
@@ -142,7 +143,7 @@ const ADMIN_EXCLUSIONS = new Set([
   'discount.override', 'shift.force_close', 'cash.out.override', 'refund.override_method', 'user.deactivate',
   'role.assign', 'role.manage', 'permission.manage', 'settings.update', 'settings.pricing', 'settings.inventory',
   'settings.payment', 'settings.security', 'settings.business', 'audit.export', 'audit.sensitive.read',
-  'refund.override_amount', 'refund.reverse'
+  'refund.override_amount', 'refund.reverse', 'sync.recovery.import'
 ]);
 
 const CASHIER_INCLUSIONS = new Set([
@@ -196,9 +197,9 @@ describeWithPostgres("M1-002B: Permission Catalog and Built-in System Role Prese
     expect(filenames.slice(0, expectedPrefix.length)).toEqual(expectedPrefix);
   });
 
-  it("C. permissions table contains exactly 94 rows", async () => {
+  it("C. permissions table contains exactly 95 rows", async () => {
     const res = await client?.query(`SELECT count(*) as count FROM identity.permissions`);
-    expect(parseInt(res?.rows[0].count)).toBe(94);
+    expect(parseInt(res?.rows[0].count)).toBe(95);
   });
 
   it("D. every expected permission code exists exactly once", async () => {
@@ -207,7 +208,7 @@ describeWithPostgres("M1-002B: Permission Catalog and Built-in System Role Prese
     for (const perm of EXPECTED_PERMISSIONS) {
       expect(dbCodes.has(perm.c)).toBe(true);
     }
-    expect(dbCodes.size).toBe(94);
+    expect(dbCodes.size).toBe(95);
   });
 
   it("E. no unexpected permission code exists", async () => {
@@ -258,13 +259,13 @@ describeWithPostgres("M1-002B: Permission Catalog and Built-in System Role Prese
     }
   });
 
-  it("L. distribution is exactly: LOW 18, MEDIUM 28, HIGH 39, CRITICAL 9", async () => {
+  it("L. distribution is exactly: LOW 18, MEDIUM 28, HIGH 39, CRITICAL 10", async () => {
     const res = await client?.query(`SELECT risk_level, count(*) as count FROM identity.permissions GROUP BY risk_level`);
     const counts = new Map(res?.rows.map(r => [r.risk_level, parseInt(r.count)]));
     expect(counts.get('LOW')).toBe(18);
     expect(counts.get('MEDIUM')).toBe(28);
     expect(counts.get('HIGH')).toBe(39);
-    expect(counts.get('CRITICAL')).toBe(9);
+    expect(counts.get('CRITICAL')).toBe(10);
   });
 
   it("M. invalid risk_level is rejected by PostgreSQL", async () => {
@@ -306,9 +307,9 @@ describeWithPostgres("M1-002B: Permission Catalog and Built-in System Role Prese
     expect(res?.rows.length).toBe(0);
   });
 
-  it("S. OWNER has exactly 94 role_permissions", async () => {
+  it("S. OWNER has exactly 95 role_permissions", async () => {
     const res = await client?.query(`SELECT count(*) as count FROM identity.role_permissions WHERE role_id = '11111111-1111-4111-8111-111111111111'`);
-    expect(parseInt(res?.rows[0].count)).toBe(94);
+    expect(parseInt(res?.rows[0].count)).toBe(95);
   });
 
   it("T. OWNER has every permission", async () => {

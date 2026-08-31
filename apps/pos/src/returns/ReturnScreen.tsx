@@ -113,6 +113,7 @@ export function ReturnScreen() {
   const [selected, setSelected] = useState<ReturnableSaleDetail | null>(null);
   const [drafts, setDrafts] = useState<Record<string, ReturnLineDraft>>({});
   const [identity, setIdentity] = useState<ReturnCommandIdentity>(commandIdentity);
+  const [selectedPaymentId, setSelectedPaymentId] = useState("");
   const [notes, setNotes] = useState("");
   const [pendingPayload, setPendingPayload] = useState<CompleteReturnPayload | null>(null);
   const [result, setResult] = useState<CompleteReturnOnlineResult | null>(null);
@@ -174,6 +175,9 @@ export function ReturnScreen() {
     setDrafts(initialDraft(aggregate));
     setIdentity(commandIdentity());
     setPendingPayload(null);
+    setSelectedPaymentId(
+      aggregate.payments.find((payment) => payment.status === "COMPLETED")?.payment_id ?? "",
+    );
     setNotes("");
     setError(null);
   };
@@ -202,7 +206,10 @@ export function ReturnScreen() {
         throw new Error("Reason dan disposition wajib dipilih untuk setiap item.");
       }
     }
-    const payment = selected.payments.find((candidate) => candidate.status === "COMPLETED");
+    const payment = selected.payments.find(
+      (candidate) =>
+        candidate.status === "COMPLETED" && candidate.payment_id === selectedPaymentId,
+    );
     if (payment === undefined) throw new Error("Pembayaran asli tidak tersedia.");
     const eligibleItems = selected.items.filter(
       (item) => !/^0(?:\.0+)?$/u.test(item.remaining_returnable_qty),
@@ -386,6 +393,26 @@ export function ReturnScreen() {
             <Field label="Catatan Return">
               <Textarea disabled={pendingPayload !== null} onChange={(event) => setNotes(event.currentTarget.value)} value={notes} />
             </Field>
+            <Field
+              label="Pembayaran asli untuk Refund"
+              description="Pilih alokasi pembayaran historis; server memvalidasi sisa batas Refund pada payment tersebut."
+              required
+            >
+              <Select
+                disabled={pendingPayload !== null}
+                onChange={(event) => setSelectedPaymentId(event.currentTarget.value)}
+                value={selectedPaymentId}
+              >
+                <option value="">Pilih pembayaran…</option>
+                {selected.payments
+                  .filter((payment) => payment.status === "COMPLETED")
+                  .map((payment) => (
+                    <option key={payment.payment_id} value={payment.payment_id}>
+                      {payment.method_code} · {formatMoney(payment.amount)}
+                    </option>
+                  ))}
+              </Select>
+            </Field>
             <div className="return-total"><span>Refund historis</span><strong>{calculatedAmount === null ? "—" : formatMoney(calculatedAmount)}</strong></div>
             <p className="muted-copy">Server menghitung ulang historical effective amount, sisa quantity, metode refund, dan batas refund sebelum commit.</p>
             <div className="return-actions">
@@ -393,7 +420,13 @@ export function ReturnScreen() {
                 <Button onClick={resetAttempt} variant="secondary">Ubah Data (Command Baru)</Button>
               ) : null}
               <Button
-                disabled={!runtime.online || !canProcess || !shiftOwned || calculatedAmount === null}
+                disabled={
+                  !runtime.online ||
+                  !canProcess ||
+                  !shiftOwned ||
+                  calculatedAmount === null ||
+                  selectedPaymentId === ""
+                }
                 loading={submitting}
                 loadingLabel="Memproses Return"
                 type="submit"

@@ -201,16 +201,10 @@ describe("HttpSyncGateway", () => {
     });
   });
 
-  it("uses the controlled recovery endpoint after session/device rejection when every fact carries a grant", async () => {
+  it("uses the controlled recovery endpoint only with an explicit independent approval", async () => {
     const urls: string[] = [];
     const fetchImplementation = vi.fn(async (input: FetchInput) => {
       urls.push(String(input));
-      if (urls.length === 1) {
-        return jsonResponse(
-          { error: { code: "DEVICE_REVOKED", message: "Device revoked." } },
-          { status: 403 },
-        );
-      }
       return jsonResponse({
         results: [
           {
@@ -242,13 +236,39 @@ describe("HttpSyncGateway", () => {
       signature: "signed-proof",
     };
 
-    const result = await makeGateway(fetchImplementation, true).push(request);
+    const gateway = new HttpSyncGateway({
+      baseUrl: "https://kastur.example.test",
+      client: "backoffice",
+      clientVersion: "2.0.0",
+      clientSchemaVersion: 6,
+      deviceId: "device-1",
+      authProvider: createBearerAuthProvider(() => "owner-approval-session"),
+      fetch: fetchImplementation,
+      createRequestId: () => "recovery-request-1",
+      recoveryApproval: { reason: "Pemulihan fakta POS yang diverifikasi Owner." },
+    });
+    const result = await gateway.push(request);
 
     expect(urls).toEqual([
-      "https://kastur.example.test/api/v1/sync/push",
       "https://kastur.example.test/api/v1/sync/recovery-push",
     ]);
     expect(result.accepted[0]?.status).toBe("ACCEPTED_WITH_REVIEW");
+  });
+
+  it("never falls back to recovery automatically after a revoked-device response", async () => {
+    const urls: string[] = [];
+    const fetchImplementation = vi.fn(async (input: FetchInput) => {
+      urls.push(String(input));
+      return jsonResponse(
+        { error: { code: "DEVICE_REVOKED", message: "Device revoked." } },
+        { status: 403 },
+      );
+    }) as typeof fetch;
+
+    await expect(makeGateway(fetchImplementation, true).push(pushRequest())).rejects.toMatchObject({
+      errorCode: "DEVICE_REVOKED",
+    });
+    expect(urls).toEqual(["https://kastur.example.test/api/v1/sync/push"]);
   });
 
   it("classifies HTTP retryability and honors Retry-After", async () => {

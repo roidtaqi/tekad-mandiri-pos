@@ -52,6 +52,10 @@ function OpenShiftPanel({
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (runtime.status !== "READY") {
+      setError("Sesi POS terkunci; pembukaan shift diblokir.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -60,7 +64,7 @@ function OpenShiftPanel({
         device_id: runtime.deviceId,
         terminal_id: operational.terminal.id,
         opening_cash: openingCash,
-        opened_at: new Date().toISOString(),
+        opened_at: runtime.getOperationTimestamp(),
       });
       await runtime.refreshOperationalState();
       void runtime.runSync();
@@ -120,6 +124,10 @@ function ManualCashPanel({
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (runtime.status !== "READY") {
+      setError("Sesi POS terkunci; pergerakan kas diblokir.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -133,7 +141,7 @@ function ManualCashPanel({
         },
         operational.auth,
         runtime.deviceId,
-        new Date().toISOString(),
+        runtime.getOperationTimestamp(),
       );
       setAmount("");
       setReason("");
@@ -197,6 +205,10 @@ function BlindClosePanel({
 
   const submitBlindCount = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (runtime.status !== "READY") {
+      setError("Sesi POS terkunci; penutupan shift diblokir.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -205,7 +217,7 @@ function BlindClosePanel({
         actualCash,
         operational.auth,
         runtime.deviceId,
-        new Date().toISOString(),
+        runtime.getOperationTimestamp(),
       );
       setPreview(submitted);
       await runtime.refreshOperationalState();
@@ -229,22 +241,35 @@ function BlindClosePanel({
     setActualCash(lockedActualCash);
     void (async () => {
       try {
+        if (runtime.status !== "READY") return;
         const resumed = await runtime.database.cash.beginShiftClosing(
           shift.shift_id,
           lockedActualCash,
           operational.auth,
           runtime.deviceId,
-          new Date().toISOString(),
+          runtime.getOperationTimestamp(),
         );
         setPreview(resumed);
       } catch (resumeError: unknown) {
         setError(userFacingError(resumeError));
       }
     })();
-  }, [operational.auth, preview, runtime.database.cash, runtime.deviceId, shift]);
+  }, [
+    operational.auth,
+    preview,
+    runtime.database.cash,
+    runtime.deviceId,
+    runtime.getOperationTimestamp,
+    runtime.status,
+    shift,
+  ]);
 
   const confirm = async () => {
     if (preview === null) return;
+    if (runtime.status !== "READY") {
+      setError("Sesi POS terkunci; penutupan shift diblokir.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -256,7 +281,7 @@ function BlindClosePanel({
         },
         operational.auth,
         runtime.deviceId,
-        new Date().toISOString(),
+        runtime.getOperationTimestamp(),
       );
       await runtime.refreshOperationalState();
       void runtime.runSync();

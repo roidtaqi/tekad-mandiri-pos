@@ -89,10 +89,15 @@ function assertOfflineAuthorization(
 ): void {
   const validUntil = new Date(auth.offline_valid_until).getTime();
   const commandTime = new Date(occurredAt).getTime();
+  const issuedAt =
+    auth.offline_authorization === undefined
+      ? null
+      : new Date(auth.offline_authorization.issued_at).getTime();
   if (
     !Number.isFinite(validUntil) ||
     !Number.isFinite(commandTime) ||
-    validUntil < commandTime
+    validUntil < commandTime ||
+    (issuedAt !== null && (!Number.isFinite(issuedAt) || commandTime < issuedAt))
   ) {
     throw new CashOperationError(
       "Cached authorization has expired.",

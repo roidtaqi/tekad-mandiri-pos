@@ -43,12 +43,26 @@ export interface PosOperationalContext {
 }
 
 export interface CachedPosSession {
-  readonly cache_version: 2;
+  readonly cache_version: 3;
   readonly access_state: "ACTIVE" | "RECOVERY_ONLY";
+  readonly recovery_cause:
+    | "NONE"
+    | "AUTHORITY_REVOKED"
+    | "CLOCK_UNTRUSTED"
+    | "LEGACY_CACHE";
   readonly cached_at: string;
   readonly credential_salt: string;
   readonly credential_verifier: string;
   readonly operational: Omit<PosOperationalContext, "source">;
+  readonly trusted_clock: TrustedOfflineClock;
+}
+
+export interface TrustedOfflineClock {
+  readonly status: "TRUSTED" | "UNTRUSTED";
+  readonly reference_server_time: string;
+  readonly reference_local_time: string;
+  readonly last_local_time: string;
+  readonly last_server_estimate: string;
 }
 
 export type RuntimeStatus =

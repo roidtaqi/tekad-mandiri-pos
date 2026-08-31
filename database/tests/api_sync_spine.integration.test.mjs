@@ -149,10 +149,8 @@ function getPos(path, secret, deviceId, terminalId) {
 /**
  * @param {string} secret
  * @param {unknown} body
- * @param {string} deviceId
- * @param {string} terminalId
  */
-function postRecovery(secret, body, deviceId, terminalId) {
+function postRecovery(secret, body) {
   return handleRequest(
     new Request("https://api.kastur.test/api/v1/sync/recovery-push", {
       body: JSON.stringify(body),
@@ -160,9 +158,7 @@ function postRecovery(secret, body, deviceId, terminalId) {
         authorization: `Bearer ${secret}`,
         "content-type": "application/json",
         "idempotency-key": randomUUID(),
-        "x-kastur-client": "pos",
-        "x-kastur-device-id": deviceId,
-        "x-terminal-id": terminalId,
+        "x-kastur-client": "backoffice",
       },
       method: "POST",
     }),
@@ -186,8 +182,10 @@ describeWithPostgres("API sync operational spine", () => {
   const otherLocationId = randomUUID();
   const cashierUserId = randomUUID();
   const limitedUserId = randomUUID();
+  const ownerUserId = randomUUID();
   const cashierMembershipId = randomUUID();
   const limitedMembershipId = randomUUID();
+  const ownerMembershipId = randomUUID();
   const limitedRoleId = randomUUID();
   const primaryDeviceId = randomUUID();
   const pullDeviceId = randomUUID();
@@ -195,6 +193,7 @@ describeWithPostgres("API sync operational spine", () => {
   const primarySessionId = randomUUID();
   const pullSessionId = randomUUID();
   const limitedSessionId = randomUUID();
+  const ownerSessionId = randomUUID();
   const terminalId = randomUUID();
   const secondaryTerminalId = randomUUID();
   const categoryId = randomUUID();
@@ -208,6 +207,7 @@ describeWithPostgres("API sync operational spine", () => {
   const primarySecret = `primary-session-${randomUUID()}`;
   const pullSecret = `pull-session-${randomUUID()}`;
   const limitedSecret = `limited-session-${randomUUID()}`;
+  const ownerSecret = `owner-session-${randomUUID()}`;
   const authorizationVersion = 7;
 
   beforeAll(async () => {
@@ -259,21 +259,25 @@ describeWithPostgres("API sync operational spine", () => {
       `INSERT INTO identity.users (id, display_name, status)
        VALUES
          ($1, 'Cashier Main', 'ACTIVE'),
-         ($2, 'Limited User', 'ACTIVE')`,
-      [cashierUserId, limitedUserId],
+         ($2, 'Limited User', 'ACTIVE'),
+         ($3, 'Recovery Owner', 'ACTIVE')`,
+      [cashierUserId, limitedUserId, ownerUserId],
     );
     await database.query(
       `INSERT INTO identity.business_memberships
          (id, business_id, user_id, status)
        VALUES
          ($1, $2, $3, 'ACTIVE'),
-         ($4, $2, $5, 'ACTIVE')`,
+         ($4, $2, $5, 'ACTIVE'),
+         ($6, $2, $7, 'ACTIVE')`,
       [
         cashierMembershipId,
         businessId,
         cashierUserId,
         limitedMembershipId,
         limitedUserId,
+        ownerMembershipId,
+        ownerUserId,
       ],
     );
     await database.query(
@@ -287,8 +291,9 @@ describeWithPostgres("API sync operational spine", () => {
          (membership_id, role_id, is_primary)
        VALUES
          ($1, '33333333-3333-4333-8333-333333333333', true),
-         ($2, $3, true)`,
-      [cashierMembershipId, limitedMembershipId, limitedRoleId],
+         ($2, $3, true),
+         ($4, '11111111-1111-4111-8111-111111111111', true)`,
+      [cashierMembershipId, limitedMembershipId, limitedRoleId, ownerMembershipId],
     );
     await database.query(
       `INSERT INTO identity.role_permissions (role_id, permission_id)
@@ -298,8 +303,8 @@ describeWithPostgres("API sync operational spine", () => {
     );
     await database.query(
       `INSERT INTO identity.authorization_versions (membership_id, version)
-       VALUES ($1, $3), ($2, $3)`,
-      [cashierMembershipId, limitedMembershipId, authorizationVersion],
+       VALUES ($1, $4), ($2, $4), ($3, $4)`,
+      [cashierMembershipId, limitedMembershipId, ownerMembershipId, authorizationVersion],
     );
     await database.query(
       `INSERT INTO identity.permission_overrides (
@@ -332,7 +337,8 @@ describeWithPostgres("API sync operational spine", () => {
        VALUES
          ($1, $2, $7, $3, $4, '2035-01-01T00:00:00Z'),
          ($5, $2, $7, $6, $8, '2035-01-01T00:00:00Z'),
-         ($9, $10, $7, $11, $12, '2035-01-01T00:00:00Z')`,
+         ($9, $10, $7, $11, $12, '2035-01-01T00:00:00Z'),
+         ($13, $14, $7, NULL, $15, '2035-01-01T00:00:00Z')`,
       [
         primarySessionId,
         cashierUserId,
@@ -346,6 +352,9 @@ describeWithPostgres("API sync operational spine", () => {
         limitedUserId,
         limitedDeviceId,
         sessionSecretHash(limitedSecret),
+        ownerSessionId,
+        ownerUserId,
+        sessionSecretHash(ownerSecret),
       ],
     );
     await database.query(
@@ -1317,6 +1326,7 @@ describeWithPostgres("API sync operational spine", () => {
       batch_id: recoveryShiftId,
       client_schema_version: 1,
       commands: [recoveryCommand],
+      recovery_reason: "Owner memverifikasi fakta shift dari perangkat yang dicabut.",
     };
 
     await database.query(
@@ -1336,12 +1346,10 @@ describeWithPostgres("API sync operational spine", () => {
       error: { code: "DEVICE_REVOKED" },
     });
 
-    const recovered = await postRecovery(
-      primarySecret,
-      recoveryBatch,
-      primaryDeviceId,
-      terminalId,
-    );
+    const deniedHistoricalBearer = await postRecovery(primarySecret, recoveryBatch);
+    expect(deniedHistoricalBearer.status).toBe(403);
+
+    const recovered = await postRecovery(ownerSecret, recoveryBatch);
     expect(recovered.status).toBe(200);
     expect((await jsonObject(recovered)).results).toMatchObject([
       {
@@ -1350,12 +1358,7 @@ describeWithPostgres("API sync operational spine", () => {
         warnings: [{ code: "AUTHORIZATION_STALE_EXCEPTION" }],
       },
     ]);
-    const recoveredAgain = await postRecovery(
-      primarySecret,
-      recoveryBatch,
-      primaryDeviceId,
-      terminalId,
-    );
+    const recoveredAgain = await postRecovery(ownerSecret, recoveryBatch);
     expect((await jsonObject(recoveredAgain)).results).toMatchObject([
       {
         command_id: recoveryShiftId,
@@ -1372,6 +1375,56 @@ describeWithPostgres("API sync operational spine", () => {
         )
       ).rows[0].count,
     ).toBe(1);
+    const recoveryApproval = await database.query(
+      `SELECT actor_user_id, action, reason, after_data
+       FROM audit.audit_events
+       WHERE entity_type = 'sync_recovery_batch' AND entity_id = $1
+       ORDER BY recorded_at ASC
+       LIMIT 1`,
+      [recoveryShiftId],
+    );
+    expect(recoveryApproval.rows[0]).toMatchObject({
+      actor_user_id: ownerUserId,
+      action: "OFFLINE_FACT_RECOVERY_APPROVED",
+      reason: "Owner memverifikasi fakta shift dari perangkat yang dicabut.",
+      after_data: {
+        historical_session_id: primarySessionId,
+        terminal_id: terminalId,
+      },
+    });
+
+    const beforeGrantShiftId = randomUUID();
+    const beforeGrantOccurredAt = new Date(
+      new Date(offlineGrant.issued_at).getTime() - 1_000,
+    ).toISOString();
+    const beforeGrantCommand = {
+      ...recoveryCommand,
+      command_id: beforeGrantShiftId,
+      correlation_id: randomUUID(),
+      occurred_at: beforeGrantOccurredAt,
+      payload: {
+        ...recoveryCommand.payload,
+        shift: {
+          ...recoveryCommand.payload.shift,
+          opened_at: beforeGrantOccurredAt,
+          shift_id: beforeGrantShiftId,
+          shift_number: `REC-${beforeGrantShiftId.slice(0, 8)}`,
+        },
+      },
+    };
+    const beforeGrantResponse = await postRecovery(ownerSecret, {
+      batch_id: beforeGrantShiftId,
+      client_schema_version: 1,
+      commands: [beforeGrantCommand],
+      recovery_reason: "Owner menguji penolakan fakta sebelum grant diterbitkan.",
+    });
+    expect((await jsonObject(beforeGrantResponse)).results).toMatchObject([
+      {
+        command_id: beforeGrantShiftId,
+        error: { code: "OFFLINE_AUTHORIZATION_SCOPE_MISMATCH" },
+        status: "REJECTED_PERMISSION",
+      },
+    ]);
 
     await database.query(
       `UPDATE identity.devices

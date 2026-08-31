@@ -369,6 +369,56 @@ export class PosSyncStore {
     };
   }
 
+  /**
+   * Re-opens only authority-related review rows for an explicit Owner-approved
+   * recovery attempt. Domain/validation conflicts remain quarantined.
+   */
+  async authorizeRecoveryRetry(businessId: string): Promise<number> {
+    const recoverableCodes = new Set([
+      "SESSION_INVALID",
+      "DEVICE_REVOKED",
+      "MEMBERSHIP_INACTIVE",
+      "PERMISSION_DENIED",
+    ]);
+    return this.db.transaction("rw", this.db.table("outbox"), async () => {
+      const records = await this.db
+        .table<LocalOutboxRecord>("outbox")
+        .where("business_id")
+        .equals(businessId)
+        .filter((record) => {
+          if (
+            record.status !== "REQUIRES_REVIEW" ||
+            record.offline_authorization === undefined ||
+            record.last_error === null
+          ) {
+            return false;
+          }
+          try {
+            const parsed = JSON.parse(record.last_error) as unknown;
+            return (
+              typeof parsed === "object" &&
+              parsed !== null &&
+              !Array.isArray(parsed) &&
+              recoverableCodes.has(String((parsed as Record<string, unknown>).code))
+            );
+          } catch {
+            return false;
+          }
+        })
+        .toArray();
+      for (const record of records) {
+        await this.db.table<LocalOutboxRecord>("outbox").update(record.outbox_id, {
+          last_error: null,
+          lease_expires_at: null,
+          lease_owner: null,
+          next_attempt_at: null,
+          status: "PENDING",
+        });
+      }
+      return records.length;
+    });
+  }
+
   async claimOutboxBatch(
     input: ClaimOutboxBatchInput,
   ): Promise<readonly LocalOutboxRecord[]> {

@@ -14,6 +14,7 @@ import {
   markCachedSessionRecoveryOnly,
   readCachedSession,
   readSessionBearer,
+  trustedOperationTimestamp,
   unlockCachedSession,
   unlockCachedSessionForRecovery,
   writeSessionBearer,
@@ -80,6 +81,18 @@ async function operational(
   };
 }
 
+async function cacheOperational(
+  expiry = "2099-01-01T00:00:00.000Z",
+) {
+  return cacheOperationalSession(
+    bearer,
+    await operational(expiry),
+    deviceId,
+    verification,
+    "2026-08-23T00:00:00.000Z",
+  );
+}
+
 describe("POS credential storage", () => {
   beforeAll(async () => {
     const keys = (await crypto.subtle.generateKey(
@@ -102,7 +115,7 @@ describe("POS credential storage", () => {
 
   it("keeps bearer only in sessionStorage and caches only a verifier", async () => {
     writeSessionBearer(bearer);
-    await cacheOperationalSession(bearer, await operational(), deviceId, verification);
+    await cacheOperational();
 
     expect(readSessionBearer()).toBe(bearer);
     expect(window.sessionStorage.getItem(POS_SESSION_BEARER_KEY)).toBe(bearer);
@@ -114,12 +127,7 @@ describe("POS credential storage", () => {
   });
 
   it("unlocks an unexpired cache only with the same personal bearer and terminal", async () => {
-    const cached = await cacheOperationalSession(
-      bearer,
-      await operational(),
-      deviceId,
-      verification,
-    );
+    const cached = await cacheOperational();
     const unlocked = await unlockCachedSession(
       bearer,
       "terminal-1",
@@ -145,12 +153,7 @@ describe("POS credential storage", () => {
   });
 
   it("rejects expired offline authorization", async () => {
-    const cached = await cacheOperationalSession(
-      bearer,
-      await operational("2026-08-24T00:00:00.000Z"),
-      deviceId,
-      verification,
-    );
+    const cached = await cacheOperational("2026-08-24T00:00:00.000Z");
     await expect(
       unlockCachedSession(
         bearer,
@@ -164,12 +167,7 @@ describe("POS credential storage", () => {
   });
 
   it("rejects a locally elevated permission even when the bearer verifier is unchanged", async () => {
-    const cached = await cacheOperationalSession(
-      bearer,
-      await operational(),
-      deviceId,
-      verification,
-    );
+    const cached = await cacheOperational();
     const tampered = {
       ...cached,
       operational: {
@@ -192,12 +190,7 @@ describe("POS credential storage", () => {
   });
 
   it("blocks new offline access after revocation while retaining a credential-bound recovery path", async () => {
-    const cached = await cacheOperationalSession(
-      bearer,
-      await operational("2026-08-24T00:00:00.000Z"),
-      deviceId,
-      verification,
-    );
+    const cached = await cacheOperational("2026-08-24T00:00:00.000Z");
     markCachedSessionRecoveryOnly(cached);
     const recoveryOnly = readCachedSession()!;
 
@@ -227,5 +220,24 @@ describe("POS credential storage", () => {
     const second = getOrCreateDeviceId();
     expect(second).toBe(first);
     expect(window.localStorage.getItem(POS_DEVICE_ID_KEY)).toBe(first);
+  });
+
+  it("uses a monotonic server-time estimate and locks after material wall-clock rollback", async () => {
+    await cacheOperational("2026-08-24T00:00:00.000Z");
+
+    expect(
+      trustedOperationTimestamp(new Date("2026-08-23T00:10:00.000Z")),
+    ).toBe("2026-08-23T00:10:00.000Z");
+    expect(
+      trustedOperationTimestamp(new Date("2026-08-23T00:20:00.000Z")),
+    ).toBe("2026-08-23T00:20:00.000Z");
+    expect(() =>
+      trustedOperationTimestamp(new Date("2026-08-23T00:00:00.000Z")),
+    ).toThrow("Jam perangkat mundur");
+    expect(readCachedSession()).toMatchObject({
+      access_state: "RECOVERY_ONLY",
+      recovery_cause: "CLOCK_UNTRUSTED",
+      trusted_clock: { status: "UNTRUSTED" },
+    });
   });
 });

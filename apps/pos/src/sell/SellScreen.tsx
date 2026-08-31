@@ -80,6 +80,10 @@ function SellWorkspace({
   const completeSale = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (submittingRef.current || cash.evaluation.status !== "SETTLED") return;
+    if (runtime.status !== "READY") {
+      setError("Sesi POS terkunci; transaksi baru diblokir.");
+      return;
+    }
     if (runtime.activeShift?.status !== "OPEN") {
       setError("Buka shift sebelum menyelesaikan penjualan.");
       return;
@@ -92,7 +96,7 @@ function SellWorkspace({
         auth: operational.auth,
         device_id: runtime.deviceId,
         command_id: crypto.randomUUID(),
-        occurred_at: new Date().toISOString(),
+        occurred_at: runtime.getOperationTimestamp(),
         cart: cart.cart,
         amount_tendered: cash.amountTenderedInput,
       });

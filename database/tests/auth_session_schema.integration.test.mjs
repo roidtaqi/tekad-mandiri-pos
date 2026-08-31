@@ -378,12 +378,12 @@ describeWithPostgres("M1-003: Auth / Session Contract Foundation", () => {
     await expectTableToExist("identity", "business_memberships");
   });
 
-  it("AD. permission count includes the complete D09 catalog of 94", async () => {
+  it("AD. permission count includes the D09 catalog plus controlled recovery permission", async () => {
     const res = await client?.query(`SELECT count(*) as count FROM identity.permissions`);
-    expect(parseInt(res?.rows[0].count)).toBe(94);
+    expect(parseInt(res?.rows[0].count)).toBe(95);
   });
 
-  it("AE. OWNER/ADMIN/CASHIER mappings are 94/71/15 after D09", async () => {
+  it("AE. OWNER/ADMIN/CASHIER mappings are 95/71/15 after controlled recovery", async () => {
     const res = await client?.query(`
       SELECT r.code, count(rp.permission_id) as c 
       FROM identity.roles r 
@@ -392,7 +392,7 @@ describeWithPostgres("M1-003: Auth / Session Contract Foundation", () => {
       GROUP BY r.code
     `);
     const counts = new Map(res?.rows.map(r => [r.code, parseInt(r.c)]));
-    expect(counts.get("OWNER")).toBe(94);
+    expect(counts.get("OWNER")).toBe(95);
     expect(counts.get("ADMIN")).toBe(71);
     expect(counts.get("CASHIER")).toBe(15);
   });

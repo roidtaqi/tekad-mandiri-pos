@@ -5,13 +5,19 @@ import {
   verifyOfflineOperationalContext,
   type OfflineAuthorizationVerification,
 } from "./offline-authorization.js";
+import {
+  advanceTrustedOfflineClock,
+  createTrustedOfflineClock,
+  TrustedClockError,
+} from "./trusted-clock.js";
 import type { CachedPosSession, PosOperationalContext } from "./types.js";
 
 export const POS_SESSION_BEARER_KEY = "kastur.pos.session-bearer";
 export const POS_DEVICE_ID_KEY = "kastur.pos.device-id";
 export const POS_TERMINAL_ID_KEY = "kastur.pos.terminal-id";
-export const POS_CACHED_SESSION_KEY = "kastur.pos.cached-session.v2";
-const LEGACY_POS_CACHED_SESSION_KEY = "kastur.pos.cached-session.v1";
+export const POS_CACHED_SESSION_KEY = "kastur.pos.cached-session.v3";
+const LEGACY_POS_CACHED_SESSION_V2_KEY = "kastur.pos.cached-session.v2";
+const LEGACY_POS_CACHED_SESSION_V1_KEY = "kastur.pos.cached-session.v1";
 
 function browserLocalStorage(): Storage | null {
   return typeof window === "undefined" ? null : window.localStorage;
@@ -50,42 +56,110 @@ export function clearSessionBearer(): void {
   browserSessionStorage()?.removeItem(POS_SESSION_BEARER_KEY);
 }
 
-function isCachedSession(value: unknown): value is CachedPosSession {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-  const record = value as Record<string, unknown>;
+function hasCachedOperationalContext(record: Record<string, unknown>): boolean {
   const operational = record.operational;
+  if (
+    typeof operational !== "object" ||
+    operational === null ||
+    Array.isArray(operational)
+  ) {
+    return false;
+  }
+  const auth = (operational as Record<string, unknown>).auth;
   return (
-    record.cache_version === 2 &&
+    typeof auth === "object" &&
+    auth !== null &&
+    !Array.isArray(auth) &&
+    isOfflineAuthorizationGrant(
+      (auth as Record<string, unknown>).offline_authorization,
+    )
+  );
+}
+
+function hasCacheEnvelope(record: Record<string, unknown>): boolean {
+  return (
     (record.access_state === "ACTIVE" || record.access_state === "RECOVERY_ONLY") &&
+    new Set(["NONE", "AUTHORITY_REVOKED", "CLOCK_UNTRUSTED", "LEGACY_CACHE"]).has(
+      String(record.recovery_cause),
+    ) &&
     typeof record.cached_at === "string" &&
     typeof record.credential_salt === "string" &&
     typeof record.credential_verifier === "string" &&
-    typeof operational === "object" &&
-    operational !== null &&
-    !Array.isArray(operational) &&
+    hasCachedOperationalContext(record)
+  );
+}
+
+function isCachedSession(value: unknown): value is CachedPosSession {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  const trustedClock = record.trusted_clock;
+  return (
+    record.cache_version === 3 &&
+    hasCacheEnvelope(record) &&
+    typeof trustedClock === "object" &&
+    trustedClock !== null &&
+    !Array.isArray(trustedClock) &&
     (() => {
-      const auth = (operational as Record<string, unknown>).auth;
+      const clock = trustedClock as Record<string, unknown>;
       return (
-        typeof auth === "object" &&
-        auth !== null &&
-        !Array.isArray(auth) &&
-        isOfflineAuthorizationGrant(
-          (auth as Record<string, unknown>).offline_authorization,
-        )
+        (clock.status === "TRUSTED" || clock.status === "UNTRUSTED") &&
+        typeof clock.reference_server_time === "string" &&
+        typeof clock.reference_local_time === "string" &&
+        typeof clock.last_local_time === "string" &&
+        typeof clock.last_server_estimate === "string"
       );
     })()
   );
 }
 
+function migrateLegacyV2(value: unknown): CachedPosSession | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (record.cache_version !== 2 || !hasCacheEnvelope(record)) return null;
+  const operational = record.operational as CachedPosSession["operational"];
+  const grant = operational.auth.offline_authorization;
+  if (!isOfflineAuthorizationGrant(grant)) return null;
+  return {
+    cache_version: 3,
+    access_state: "RECOVERY_ONLY",
+    recovery_cause: "LEGACY_CACHE",
+    cached_at: record.cached_at as string,
+    credential_salt: record.credential_salt as string,
+    credential_verifier: record.credential_verifier as string,
+    operational,
+    trusted_clock: createTrustedOfflineClock(grant, record.cached_at as string),
+  };
+}
+
 export function readCachedSession(): CachedPosSession | null {
-  const raw = browserLocalStorage()?.getItem(POS_CACHED_SESSION_KEY);
-  if (!raw) return null;
+  const storage = browserLocalStorage();
+  const raw = storage?.getItem(POS_CACHED_SESSION_KEY);
+  if (!raw) return migrateLegacyCachedSession();
   try {
     const parsed: unknown = JSON.parse(raw);
     return isCachedSession(parsed) ? parsed : null;
   } catch {
     return null;
   }
+}
+
+function migrateLegacyCachedSession(): CachedPosSession | null {
+  const storage = browserLocalStorage();
+  const raw = storage?.getItem(LEGACY_POS_CACHED_SESSION_V2_KEY);
+  if (!raw) return null;
+  try {
+    const migrated = migrateLegacyV2(JSON.parse(raw) as unknown);
+    if (migrated === null) return null;
+    storage?.setItem(POS_CACHED_SESSION_KEY, JSON.stringify(migrated));
+    storage?.removeItem(LEGACY_POS_CACHED_SESSION_V2_KEY);
+    return migrated;
+  } catch {
+    return null;
+  }
+}
+
+export function readOrMigrateCachedSession(): CachedPosSession | null {
+  return readCachedSession();
 }
 
 export async function cacheOperationalSession(
@@ -103,8 +177,9 @@ export async function cacheOperationalSession(
   );
   const credentialSalt = generateQuickLockSalt();
   const cached: CachedPosSession = {
-    cache_version: 2,
+    cache_version: 3,
     access_state: "ACTIVE",
+    recovery_cause: "NONE",
     cached_at: cachedAt,
     credential_salt: credentialSalt,
     credential_verifier: await deriveQuickLockHash(
@@ -121,6 +196,7 @@ export async function cacheOperationalSession(
         ? {}
         : { payment_methods: operational.payment_methods }),
     },
+    trusted_clock: createTrustedOfflineClock(grant, cachedAt),
   };
   browserLocalStorage()?.setItem(POS_CACHED_SESSION_KEY, JSON.stringify(cached));
   return cached;
@@ -141,15 +217,16 @@ export async function validateCachedSession(
   if (cached.operational.terminal.id !== terminalId) {
     throw new Error("Terminal berbeda memerlukan verifikasi online.");
   }
-  const expiry = new Date(cached.operational.auth.offline_valid_until).getTime();
-  if (!Number.isFinite(expiry) || expiry < now.getTime()) {
-    throw new Error("Izin offline sudah kedaluwarsa. Sambungkan perangkat untuk masuk kembali.");
-  }
-  await verifyOfflineOperationalContext(
+  const grant = await verifyOfflineOperationalContext(
     cached.operational,
     deviceId,
     terminalId,
     verification,
+  );
+  const advanced = advanceTrustedOfflineClock(cached.trusted_clock, grant, now);
+  browserLocalStorage()?.setItem(
+    POS_CACHED_SESSION_KEY,
+    JSON.stringify({ ...cached, trusted_clock: advanced.clock }),
   );
   if (!cached.operational.auth.permissions.includes("workspace.pos.access")) {
     throw new Error("Pengguna tidak memiliki akses POS pada cache izin ini.");
@@ -228,14 +305,56 @@ export async function unlockCachedSessionForRecovery(
   return context;
 }
 
-export function markCachedSessionRecoveryOnly(cached: CachedPosSession): void {
+export function markCachedSessionRecoveryOnly(
+  cached: CachedPosSession,
+  cause: Exclude<CachedPosSession["recovery_cause"], "NONE"> = "AUTHORITY_REVOKED",
+): void {
   browserLocalStorage()?.setItem(
     POS_CACHED_SESSION_KEY,
-    JSON.stringify({ ...cached, access_state: "RECOVERY_ONLY" }),
+    JSON.stringify({ ...cached, access_state: "RECOVERY_ONLY", recovery_cause: cause }),
   );
+}
+
+export function trustedOperationTimestamp(now = new Date()): string {
+  const cached = readOrMigrateCachedSession();
+  if (cached === null || cached.access_state !== "ACTIVE") {
+    throw new TrustedClockError(
+      "CLOCK_UNTRUSTED",
+      "Konteks offline aktif tidak tersedia. Masuk kembali sebelum membuat fakta baru.",
+    );
+  }
+  const grant = cached.operational.auth.offline_authorization;
+  if (!isOfflineAuthorizationGrant(grant)) {
+    throw new TrustedClockError(
+      "CLOCK_UNTRUSTED",
+      "Bukti otorisasi offline tidak tersedia.",
+    );
+  }
+  try {
+    const advanced = advanceTrustedOfflineClock(cached.trusted_clock, grant, now);
+    browserLocalStorage()?.setItem(
+      POS_CACHED_SESSION_KEY,
+      JSON.stringify({ ...cached, trusted_clock: advanced.clock }),
+    );
+    return advanced.occurredAt;
+  } catch (error: unknown) {
+    if (error instanceof TrustedClockError) {
+      browserLocalStorage()?.setItem(
+        POS_CACHED_SESSION_KEY,
+        JSON.stringify({
+          ...cached,
+          access_state: "RECOVERY_ONLY",
+          recovery_cause: "CLOCK_UNTRUSTED",
+          trusted_clock: { ...cached.trusted_clock, status: "UNTRUSTED" },
+        }),
+      );
+    }
+    throw error;
+  }
 }
 
 export function clearCachedSession(): void {
   browserLocalStorage()?.removeItem(POS_CACHED_SESSION_KEY);
-  browserLocalStorage()?.removeItem(LEGACY_POS_CACHED_SESSION_KEY);
+  browserLocalStorage()?.removeItem(LEGACY_POS_CACHED_SESSION_V2_KEY);
+  browserLocalStorage()?.removeItem(LEGACY_POS_CACHED_SESSION_V1_KEY);
 }

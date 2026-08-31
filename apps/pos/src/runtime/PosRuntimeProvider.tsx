@@ -51,6 +51,7 @@ import {
   validateCachedRecoverySession,
   writeSessionBearer,
   writeTerminalId,
+  trustedOperationTimestamp,
 } from "./storage.js";
 import type {
   PosOperationalContext,
@@ -92,6 +93,11 @@ export interface SubmitReturnInput {
   readonly payload: CompleteReturnPayload;
 }
 
+export interface RecoverOutboxInput {
+  readonly approverBearer: string;
+  readonly reason: string;
+}
+
 export interface PosRuntimeValue {
   readonly status: RuntimeStatus;
   readonly error: string | null;
@@ -102,8 +108,11 @@ export interface PosRuntimeValue {
   readonly operational: PosOperationalContext | null;
   readonly activeShift: LocalShiftRecord | null;
   readonly sync: RuntimeSyncState;
+  readonly recoveryRequired: boolean;
   connect(input: ConnectSessionInput): Promise<void>;
+  getOperationTimestamp(): string;
   quickLock(): void;
+  recoverOutbox(input: RecoverOutboxInput): Promise<void>;
   signOut(): Promise<void>;
   runSync(): Promise<void>;
   refreshOperationalState(): Promise<void>;
@@ -184,6 +193,7 @@ export function PosRuntimeProvider({
     typeof navigator === "undefined" ? true : navigator.onLine,
   );
   const [sync, setSync] = useState<RuntimeSyncState>(defaultSyncState);
+  const [recoveryRequired, setRecoveryRequired] = useState(false);
   const syncRuntimeRef = useRef<SyncRuntime | null>(null);
   const syncingRef = useRef(false);
 
@@ -302,6 +312,7 @@ export function PosRuntimeProvider({
         syncRuntimeRef.current = runtime;
         setOperational(context);
         await loadOperationalState(context);
+        setRecoveryRequired(false);
         setStatus("READY");
         setSync((current) => ({
           ...current,
@@ -323,36 +334,32 @@ export function PosRuntimeProvider({
               cached,
               config.offlineAuthorizationVerification,
             );
-            const recoveryRuntime = createSyncRuntime(
-              recoveryContext.business.id,
-              cleanTerminalId,
-            );
-            const result = await drainRecoveryOutbox(
-              () => recoveryRuntime.orchestrator.pushPending(),
-              () => database.sync.getOutboxSummary(recoveryContext.business.id),
-            );
             clearSessionBearer();
             syncRuntimeRef.current = null;
-            if (canDiscardHistoricalCredential(result.summary)) {
+            const summary = await database.sync.getOutboxSummary(
+              recoveryContext.business.id,
+            );
+            if (canDiscardHistoricalCredential(summary)) {
               clearCachedSession();
               setOperational(null);
               setActiveShift(null);
+              setRecoveryRequired(false);
               setStatus("SIGNED_OUT");
-              setError(
-                `${result.accepted + result.accepted_with_review} fakta lokal dipulihkan ke server; akses perangkat tetap dicabut.`,
-              );
+              setError("Akses perangkat telah dicabut dan tidak ada fakta lokal tertunda.");
             } else {
               setOperational(recoveryContext);
               await loadOperationalState(recoveryContext);
+              setRecoveryRequired(true);
               setStatus("LOCKED");
               setError(
-                "Akses perangkat dicabut. Sebagian outbox masih memerlukan koneksi ulang atau peninjauan terkontrol.",
+                "Akses perangkat dicabut. Fakta lokal dikunci dan memerlukan persetujuan recovery dari Owner aktif.",
               );
             }
             return;
           } catch (recoveryError: unknown) {
             clearSessionBearer();
             syncRuntimeRef.current = null;
+            setRecoveryRequired(true);
             setStatus("LOCKED");
             setError(`Pemulihan outbox belum berhasil: ${messageFromError(recoveryError)}`);
             return;
@@ -415,6 +422,111 @@ export function PosRuntimeProvider({
     setStatus("LOCKED");
     setError(null);
   }, []);
+
+  const getOperationTimestamp = useCallback((): string => {
+    if (status !== "READY" || operational === null) {
+      throw new Error("Sesi POS tidak aktif; operasi lokal diblokir.");
+    }
+    try {
+      return trustedOperationTimestamp(now());
+    } catch (clockError: unknown) {
+      clearSessionBearer();
+      syncRuntimeRef.current = null;
+      setStatus("LOCKED");
+      setError(messageFromError(clockError));
+      throw clockError;
+    }
+  }, [now, operational, status]);
+
+  const recoverOutbox = useCallback(
+    async ({ approverBearer, reason }: RecoverOutboxInput): Promise<void> => {
+      const cleanApproverBearer = approverBearer.trim();
+      const cleanReason = reason.trim();
+      const cached = readCachedSession();
+      if (
+        !recoveryRequired ||
+        cached === null ||
+        cached.access_state !== "RECOVERY_ONLY" ||
+        cached.recovery_cause !== "AUTHORITY_REVOKED" ||
+        operational === null
+      ) {
+        setError("Tidak ada konteks recovery terkontrol yang aktif.");
+        return;
+      }
+      if (!online) {
+        setError("Recovery memerlukan koneksi online ke server.");
+        return;
+      }
+      if (cleanApproverBearer === "" || cleanReason.length < 10 || cleanReason.length > 500) {
+        setError("Sesi approver dan alasan recovery 10–500 karakter wajib diisi.");
+        return;
+      }
+
+      setStatus("CONNECTING");
+      setError(null);
+      try {
+        await database.sync.authorizeRecoveryRetry(operational.business.id);
+        const adapter = new PosLocalSyncStoreAdapter(database, deviceId);
+        const gateway = new HttpSyncGateway({
+          baseUrl: config.apiBaseUrl,
+          client: "backoffice",
+          clientVersion: config.clientVersion,
+          clientSchemaVersion: 1,
+          deviceId,
+          authProvider: createBearerAuthProvider(() => cleanApproverBearer),
+          fetch: fetchImplementation,
+          recoveryApproval: { reason: cleanReason },
+        });
+        const orchestrator = new SyncOrchestrator({
+          gateway,
+          store: adapter,
+          businessId: operational.business.id,
+          deviceId,
+          clientSchemaVersion: 1,
+          now,
+        });
+        const result = await drainRecoveryOutbox(
+          () => orchestrator.pushPending(),
+          () => database.sync.getOutboxSummary(operational.business.id),
+        );
+        if (canDiscardHistoricalCredential(result.summary)) {
+          clearSessionBearer();
+          clearCachedSession();
+          syncRuntimeRef.current = null;
+          setOperational(null);
+          setActiveShift(null);
+          setRecoveryRequired(false);
+          setSync(defaultSyncState);
+          setStatus("SIGNED_OUT");
+          setError(
+            `${result.accepted + result.accepted_with_review} fakta lokal dipulihkan; perangkat tetap tidak berwenang.`,
+          );
+          return;
+        }
+        await loadOperationalState(operational);
+        setStatus("LOCKED");
+        setError(
+          "Recovery belum tuntas. Fakta yang ditolak tetap dipertahankan untuk peninjauan.",
+        );
+      } catch (recoveryError: unknown) {
+        await loadOperationalState(operational).catch(() => undefined);
+        setStatus("LOCKED");
+        setError(`Recovery terkontrol gagal: ${messageFromError(recoveryError)}`);
+      }
+    },
+    [
+      config.apiBaseUrl,
+      config.clientVersion,
+      database,
+      deviceId,
+      fetchImplementation,
+      loadOperationalState,
+      now,
+      online,
+      operational,
+      recoveryRequired,
+    ],
+  );
 
   const completeReturn = useCallback(
     async (input: SubmitReturnInput): Promise<CompleteReturnOnlineResult> => {
@@ -484,6 +596,7 @@ export function PosRuntimeProvider({
     setOperational(null);
     setActiveShift(null);
     setSync(defaultSyncState);
+    setRecoveryRequired(false);
     setStatus("SIGNED_OUT");
     setError(null);
   }, [
@@ -647,9 +760,11 @@ export function PosRuntimeProvider({
         const bearer = readSessionBearer();
         if (cached !== null) {
           if (config.offlineAuthorizationVerification === null) {
-            clearCachedSession();
             clearSessionBearer();
-            setStatus("SIGNED_OUT");
+            setError(
+              "Kunci verifikasi offline belum dikonfigurasi. Cache dan outbox dipertahankan; pulihkan konfigurasi sebelum melanjutkan.",
+            );
+            setStatus("ERROR");
             return;
           }
           const cachedContext =
@@ -668,6 +783,7 @@ export function PosRuntimeProvider({
                   now(),
                 );
           setOperational(cachedContext);
+          setRecoveryRequired(cached.recovery_cause === "AUTHORITY_REVOKED");
           setTerminalId(cached.operational.terminal.id);
           await loadOperationalState(cachedContext);
           if (bearer !== null) {
@@ -748,8 +864,11 @@ export function PosRuntimeProvider({
       operational,
       activeShift,
       sync,
+      recoveryRequired,
       connect,
+      getOperationTimestamp,
       quickLock,
+      recoverOutbox,
       signOut,
       runSync,
       refreshOperationalState,
@@ -766,6 +885,8 @@ export function PosRuntimeProvider({
       online,
       operational,
       quickLock,
+      recoverOutbox,
+      recoveryRequired,
       refreshOperationalState,
       runSync,
       searchReturnableSales,
@@ -773,6 +894,7 @@ export function PosRuntimeProvider({
       status,
       sync,
       terminalId,
+      getOperationTimestamp,
     ],
   );
 

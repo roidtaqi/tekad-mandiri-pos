@@ -98,6 +98,35 @@ function sameInstant(left: Date | string, right: string): boolean {
   return new Date(left).getTime() === new Date(right).getTime();
 }
 
+async function requireActiveTerminal(
+  executor: SqlExecutor,
+  businessId: string,
+  locationId: string,
+  terminalId: string | null,
+): Promise<void> {
+  if (terminalId === null) {
+    throw new ApiError(
+      403,
+      "TERMINAL_CONTEXT_REQUIRED",
+      "Sesi POS wajib memilih terminal aktif.",
+    );
+  }
+  const terminal = await executor.query<{ readonly id: string }>(
+    `SELECT id
+     FROM core.terminals
+     WHERE id = $1 AND business_id = $2 AND location_id = $3 AND status = 'ACTIVE'
+     LIMIT 1`,
+    [terminalId, businessId, locationId],
+  );
+  if (terminal.rows[0] === undefined) {
+    throw new ApiError(
+      403,
+      "TERMINAL_CONTEXT_INVALID",
+      "Terminal POS tidak aktif atau berada di konteks Business/Lokasi yang berbeda.",
+    );
+  }
+}
+
 function authorizationFromGrant(
   grant: OfflineAuthorizationGrant,
   displayName: string,
@@ -220,6 +249,14 @@ export async function authenticateRequest(
       403,
       "OPERATIONAL_CONTEXT_INCOMPLETE",
       "Lokasi atau peran utama belum dikonfigurasi.",
+    );
+  }
+  if (requestClient === "pos") {
+    await requireActiveTerminal(
+      executor,
+      session.business_id,
+      session.default_location_id,
+      selectedTerminalId,
     );
   }
 
@@ -357,17 +394,17 @@ export async function contextForOfflineGrant(
 }
 
 /**
- * Controlled ingestion identity for facts completed before a POS learned that
- * its session/device/permission was revoked. The old bearer proves possession;
- * the server signature proves the historical scope. No new online command may
- * use this path.
+ * Reconstructs the historical actor for an explicitly approved recovery
+ * import. A current, independent approver authorizes transport; the signed
+ * grant preserves the original actor/device/terminal attribution.
  */
 export async function authenticateRecoveryRequest(
-  request: Request,
   executor: SqlExecutor,
   environment: ApiEnvironment,
+  approver: AuthenticatedRequestContext,
   value: unknown,
 ): Promise<AuthenticatedRequestContext> {
+  requirePermission(approver, "sync.recovery.import");
   if (
     !isOfflineAuthorizationGrant(value) ||
     !(await verifyOfflineAuthorizationGrant(environment, value))
@@ -378,21 +415,16 @@ export async function authenticateRecoveryRequest(
       "Bukti otorisasi offline tidak valid.",
     );
   }
-  const requestDeviceId = request.headers.get("x-kastur-device-id");
-  const requestTerminalId = request.headers.get("x-terminal-id");
   if (
-    request.headers.get("x-kastur-client")?.toLowerCase() !== "pos" ||
-    requestDeviceId !== value.device_id ||
-    requestTerminalId !== value.terminal_id
+    approver.authorization.membership.business_id !== value.authorization.business_id
   ) {
     throw new ApiError(
       403,
-      "OFFLINE_AUTHORIZATION_CONTEXT_MISMATCH",
-      "Header perangkat/terminal tidak cocok dengan bukti offline.",
+      "CROSS_BUSINESS_ACCESS_DENIED",
+      "Persetujuan recovery dan fakta historis harus berasal dari Business yang sama.",
     );
   }
 
-  const sessionSecretHash = await sha256Hex(getSessionSecret(request));
   const result = await executor.query<HistoricalSessionRow>(
     `SELECT s.id AS session_id, s.business_id, s.device_id,
             s.issued_at, s.expires_at, s.user_id, u.display_name,
@@ -401,18 +433,21 @@ export async function authenticateRecoveryRequest(
      JOIN identity.users u ON u.id = s.user_id
      JOIN identity.business_memberships m
        ON m.business_id = s.business_id AND m.user_id = s.user_id
-     WHERE s.session_secret_hash = $1
-       AND s.id = $2
-       AND s.business_id = $3
-       AND s.user_id = $4
-       AND s.device_id = $5
+     JOIN core.terminals t
+       ON t.id = $5 AND t.business_id = s.business_id
+      AND t.location_id = $6
+     WHERE s.id = $1
+       AND s.business_id = $2
+       AND s.user_id = $3
+       AND s.device_id = $4
      LIMIT 1`,
     [
-      sessionSecretHash,
       value.session_id,
       value.authorization.business_id,
       value.authorization.user_id,
       value.device_id,
+      value.terminal_id,
+      value.authorization.default_location_id,
     ],
   );
   const session = result.rows[0];

@@ -132,7 +132,8 @@ async function commandAuthorizationContext(
 }> {
   const needsHistoricalAuthority =
     recovery ||
-    envelope.authorization_version !== current.authorization.authorization_version;
+    envelope.authorization_version !== current.authorization.authorization_version ||
+    envelope.offline_authorization !== undefined;
   if (!needsHistoricalAuthority) return { context: current, staleReview: false };
   if (
     !OFFLINE_SAFE_FACT_COMMANDS.has(envelope.command.command_type) ||
@@ -167,7 +168,9 @@ async function commandAuthorizationContext(
   }
   return {
     context: await contextForOfflineGrant(environment, current, grant),
-    staleReview: true,
+    staleReview:
+      recovery ||
+      envelope.authorization_version !== current.authorization.authorization_version,
   };
 }
 

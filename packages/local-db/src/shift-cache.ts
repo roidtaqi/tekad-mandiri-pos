@@ -110,6 +110,10 @@ export class PosShiftCache {
     // Validate offline authorization has not expired
     const offlineValidUntil = new Date(auth.offline_valid_until).getTime();
     const commandTime = new Date(opened_at).getTime();
+    const issuedAt =
+      auth.offline_authorization === undefined
+        ? null
+        : new Date(auth.offline_authorization.issued_at).getTime();
 
     if (isNaN(offlineValidUntil) || isNaN(commandTime)) {
       throw new ShiftOpenError(
@@ -118,7 +122,10 @@ export class PosShiftCache {
       );
     }
 
-    if (offlineValidUntil < commandTime) {
+    if (
+      offlineValidUntil < commandTime ||
+      (issuedAt !== null && (!Number.isFinite(issuedAt) || commandTime < issuedAt))
+    ) {
       throw new ShiftOpenError(
         "Cached authorization has expired.",
         SHIFT_AUTHORIZATION_EXPIRED,

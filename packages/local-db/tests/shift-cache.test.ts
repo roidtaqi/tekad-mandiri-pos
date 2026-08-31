@@ -279,6 +279,36 @@ test("AUTH-05: expired offline authorization rejects", async () => {
   ).rejects.toMatchObject({ code: SHIFT_AUTHORIZATION_EXPIRED });
 });
 
+test("AUTH-05: command timestamp before signed grant issuance rejects", async () => {
+  const base = makeAuth();
+  const auth = makeAuth({
+    offline_authorization: {
+      schema_version: 1,
+      algorithm: "ECDSA_P256_SHA256",
+      key_id: "test-key",
+      session_id: "session-1",
+      device_id: "dev-1",
+      terminal_id: "terminal-1",
+      issued_at: "2026-08-17T09:00:00Z",
+      offline_valid_until: base.offline_valid_until,
+      authorization: {
+        user_id: base.user.id,
+        business_id: base.membership.business_id,
+        primary_role: base.primary_role,
+        permissions: base.permissions,
+        authorization_version: base.authorization_version,
+        default_location_id: base.default_location_id,
+      },
+      signature: "signed-proof",
+    },
+  });
+  await expect(
+    db.shifts.openShift(
+      makeInput({ auth, opened_at: "2026-08-17T08:59:59Z" }),
+    ),
+  ).rejects.toMatchObject({ code: SHIFT_AUTHORIZATION_EXPIRED });
+});
+
 // ─── AUTH-06: authorization_version is preserved ──────────────────────
 
 test("AUTH-06: authorization_version is preserved on shift fact", async () => {

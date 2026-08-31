@@ -367,12 +367,20 @@ export class PosSalesManager {
     
     const validUntilMs = new Date(auth.offline_valid_until).getTime();
     const occurredAtMs = new Date(occurred_at).getTime();
+    const issuedAtMs =
+      auth.offline_authorization === undefined
+        ? null
+        : new Date(auth.offline_authorization.issued_at).getTime();
 
     if (isNaN(validUntilMs) || isNaN(occurredAtMs)) {
       throw new CompleteSaleError("Malformed timestamp for authorization", SALE_AUTHORIZATION_EXPIRED);
     }
 
-    if (validUntilMs < occurredAtMs) {
+    if (
+      validUntilMs < occurredAtMs ||
+      (issuedAtMs !== null &&
+        (!Number.isFinite(issuedAtMs) || occurredAtMs < issuedAtMs))
+    ) {
       throw new CompleteSaleError("Offline authorization expired", SALE_AUTHORIZATION_EXPIRED);
     }
 

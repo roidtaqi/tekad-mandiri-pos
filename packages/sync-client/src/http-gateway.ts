@@ -38,6 +38,14 @@ export interface HttpSyncGatewayOptions {
   readonly authProvider: SyncAuthProvider;
   readonly fetch?: FetchImplementation;
   readonly createRequestId?: () => string;
+  /**
+   * Explicit, human-approved import of historical POS facts. This mode never
+   * activates as an automatic fallback and requires an active server-side
+   * `sync.recovery.import` permission.
+   */
+  readonly recoveryApproval?: {
+    readonly reason: string;
+  };
 }
 
 export function createBearerAuthProvider(
@@ -385,6 +393,15 @@ export class HttpSyncGateway implements SyncGateway {
   constructor(private readonly options: HttpSyncGatewayOptions) {
     if (options.baseUrl.trim() === "") throw new TypeError("baseUrl is required.");
     if (options.deviceId.trim() === "") throw new TypeError("deviceId is required.");
+    if (options.recoveryApproval !== undefined) {
+      const reason = options.recoveryApproval.reason.trim();
+      if (options.client !== "backoffice") {
+        throw new TypeError("Recovery import must use an independent backoffice approver.");
+      }
+      if (reason.length < 10 || reason.length > 500) {
+        throw new TypeError("Recovery approval reason must contain 10–500 characters.");
+      }
+    }
     this.#baseUrl = options.baseUrl.endsWith("/")
       ? options.baseUrl
       : `${options.baseUrl}/`;
@@ -446,16 +463,21 @@ export class HttpSyncGateway implements SyncGateway {
     const init: RequestInit = {
       method: "POST",
       headers: { "Idempotency-Key": idempotencyKey },
-      body: JSON.stringify(request),
+      body: JSON.stringify(
+        this.options.recoveryApproval === undefined
+          ? request
+          : {
+              ...request,
+              recovery_reason: this.options.recoveryApproval.reason.trim(),
+            },
+      ),
     };
-    let response = await this.#request(SYNC_PUSH_PATH, init);
-    if (
-      (response.status === 401 || response.status === 403) &&
-      request.commands.length > 0 &&
-      request.commands.every((command) => command.offline_authorization !== undefined)
-    ) {
-      response = await this.#request(SYNC_RECOVERY_PUSH_PATH, init);
-    }
+    const response = await this.#request(
+      this.options.recoveryApproval === undefined
+        ? SYNC_PUSH_PATH
+        : SYNC_RECOVERY_PUSH_PATH,
+      init,
+    );
     if (!response.ok) return throwHttpError(response);
     return decodePushResponse(await readResponseJson(response));
   }

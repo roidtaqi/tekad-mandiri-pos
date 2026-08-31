@@ -269,6 +269,51 @@ describe("PosSyncStore", () => {
     });
   });
 
+  it("requeues only signed authority failures for an explicit recovery approval", async () => {
+    const commandId = await openShift();
+    await database.sync.claimOutboxBatch({
+      business_id: "business-1",
+      lease_owner: "worker-1",
+      claimed_at: "2026-08-17T02:00:00Z",
+      lease_expires_at: "2026-08-17T02:05:00Z",
+    });
+    await database.sync.settleOutboxBatch("worker-1", [
+      {
+        command_id: commandId,
+        disposition: "REQUIRES_REVIEW",
+        error: JSON.stringify({ code: "DEVICE_REVOKED", message: "revoked" }),
+      },
+    ]);
+
+    await expect(
+      database.sync.authorizeRecoveryRetry("business-1"),
+    ).resolves.toBe(1);
+    await expect(database.sync.getOutboxCommand(commandId)).resolves.toMatchObject({
+      last_error: null,
+      status: "PENDING",
+    });
+
+    await database.sync.claimOutboxBatch({
+      business_id: "business-1",
+      lease_owner: "worker-2",
+      claimed_at: "2026-08-17T02:10:00Z",
+      lease_expires_at: "2026-08-17T02:15:00Z",
+    });
+    await database.sync.settleOutboxBatch("worker-2", [
+      {
+        command_id: commandId,
+        disposition: "REQUIRES_REVIEW",
+        error: JSON.stringify({ code: "BUSINESS_CONFLICT", message: "conflict" }),
+      },
+    ]);
+    await expect(
+      database.sync.authorizeRecoveryRetry("business-1"),
+    ).resolves.toBe(0);
+    await expect(database.sync.getOutboxCommand(commandId)).resolves.toMatchObject({
+      status: "REQUIRES_REVIEW",
+    });
+  });
+
   it("bootstraps and reboots scoped projections atomically without touching pending outbox", async () => {
     const commandId = await openShift();
     const projectionKey = buildOpaqueProjectionKey("business-1", "cash");
