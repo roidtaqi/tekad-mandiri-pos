@@ -172,21 +172,38 @@ export function constantTimeEqual(a: string, b: string): boolean {
 export function verifySetupToken(
   providedToken: string | null | undefined,
   configuredToken: string | null | undefined,
+  nodeEnv?: string | null | undefined,
 ): boolean {
-  if (!configuredToken || configuredToken.trim() === "") {
-    return true;
+  const isProduction = nodeEnv === "production";
+
+  if (isProduction) {
+    if (!configuredToken || configuredToken.trim() === "") {
+      return false;
+    }
+    if (!providedToken || providedToken.trim() === "") {
+      return false;
+    }
+    return constantTimeEqual(providedToken.trim(), configuredToken.trim());
   }
-  if (!providedToken || providedToken.trim() === "") {
-    return false;
+
+  if (typeof configuredToken === "string" && configuredToken.trim() !== "") {
+    if (!providedToken || providedToken.trim() === "") {
+      return false;
+    }
+    return constantTimeEqual(providedToken.trim(), configuredToken.trim());
   }
-  return constantTimeEqual(providedToken.trim(), configuredToken.trim());
+
+  return true;
 }
 
 export async function authenticateRequest(
   request: Request,
   executor: SqlExecutor,
   environment: ApiEnvironment = {},
-  options: { readonly skipDeviceCheck?: boolean } = {},
+  options: {
+    readonly skipDeviceCheck?: boolean | undefined;
+    readonly skipTerminalCheck?: boolean | undefined;
+  } = {},
 ): Promise<AuthenticatedRequestContext> {
   const selectedTerminalHeader = request.headers.get("x-terminal-id");
   const selectedTerminalId =
@@ -291,7 +308,7 @@ export async function authenticateRequest(
     );
   }
   let resolvedTerminalId = selectedTerminalId;
-  if (requestClient === "pos") {
+  if (requestClient === "pos" && !options.skipTerminalCheck) {
     if (resolvedTerminalId === null) {
       const activeTerminals = await executor.query<{ readonly id: string; readonly name: string }>(
         `SELECT id, name FROM core.terminals
@@ -629,6 +646,7 @@ export async function enrollDevice(
 ): Promise<Response> {
   const context = await authenticateRequest(request, database, environment, {
     skipDeviceCheck: true,
+    skipTerminalCheck: true,
   });
 
   if (!context.authorization.permissions.includes("workspace.pos.access")) {
@@ -723,5 +741,6 @@ export async function enrollDevice(
       status: "ACTIVE",
     },
     { status: 201 },
+    { allowedOrigins: environment.ALLOWED_ORIGINS, request },
   );
 }

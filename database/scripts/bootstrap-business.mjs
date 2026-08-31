@@ -132,12 +132,14 @@ async function main() {
        VALUES ($1, 1)`,
       [ids.membership],
     );
-    await client.query(
-      `INSERT INTO identity.devices (
-         id, business_id, code, display_name, device_type, status
-       ) VALUES ($1, $2, $3, $4, 'PWA', 'ACTIVE')`,
-      [ids.device, ids.business, `DEV-${ids.device.slice(0, 8)}`, terminalName],
-    );
+    if (explicitDeviceId) {
+      await client.query(
+        `INSERT INTO identity.devices (
+           id, business_id, code, display_name, device_type, status
+         ) VALUES ($1, $2, $3, $4, 'PWA', 'ACTIVE')`,
+        [ids.device, ids.business, `DEV-${ids.device.slice(0, 8)}`, terminalName],
+      );
+    }
     await client.query(
       `INSERT INTO core.terminals (
          id, business_id, location_id, code, name, status
@@ -191,7 +193,7 @@ async function main() {
         ids.business,
         ids.location,
         ids.user,
-        ids.device,
+        sessionDeviceId,
         ids.session,
         JSON.stringify({
           business_name: businessName,

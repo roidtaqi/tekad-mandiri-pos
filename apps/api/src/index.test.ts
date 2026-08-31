@@ -321,6 +321,61 @@ describe("secure first-run setup endpoint", () => {
     expect(body.requires_setup_token).toBe(true);
     expect(body.status).toBe("NOT_INITIALIZED");
   });
+  it("fails closed in production if KASTUR_SETUP_TOKEN is missing", async () => {
+    const database = new MockSetupDatabase();
+    const environment = { NODE_ENV: "production" };
+
+    const response = await handleRequest(
+      new Request("https://api.kastur.test/api/v1/system/setup", {
+        body: JSON.stringify({ business_name: "Toko Berkah" }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      }),
+      environment,
+      { database },
+    );
+
+    expect(response.status).toBe(503);
+    const body = (await response.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("SETUP_DISABLED");
+  });
+
+  it("does not create a phantom device during first-run business setup", async () => {
+    const queries: string[] = [];
+    const database: RequestDatabase = {
+      async close() {},
+      async query<TRow = Readonly<Record<string, unknown>>>(
+        text: string,
+      ): Promise<SqlQueryResult<TRow>> {
+        queries.push(text);
+        if (text.includes("SELECT count(*)::int AS count FROM core.businesses")) {
+          return { rowCount: 1, rows: [{ count: 0 }] as unknown as TRow[] };
+        }
+        return { rowCount: 1, rows: [] };
+      },
+      async transaction<TResult>(
+        operation: (executor: RequestDatabase) => Promise<TResult>,
+      ): Promise<TResult> {
+        return operation(this);
+      },
+    };
+
+    const response = await handleRequest(
+      new Request("https://api.kastur.test/api/v1/system/setup", {
+        body: JSON.stringify({ business_name: "Toko Baru" }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      }),
+      {},
+      { database },
+    );
+
+    expect(response.status).toBe(201);
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body.device_id).toBeUndefined();
+    // Verify no insert into identity.devices occurred
+    expect(queries.some((q) => q.includes("INSERT INTO identity.devices"))).toBe(false);
+  });
 });
 
 describe("device authorization and terminal binding security", () => {
@@ -345,6 +400,13 @@ describe("device authorization and terminal binding security", () => {
     id: "77777777-7777-4777-8777-777777777777",
     location_id: "22222222-2222-4222-8222-222222222222",
     name: "Kasir 1",
+  };
+
+  const terminal2 = {
+    code: "POS-2",
+    id: "99999999-9999-4999-8999-999999999999",
+    location_id: "22222222-2222-4222-8222-222222222222",
+    name: "Kasir 2",
   };
 
   it("rejects POS request when device ID does not match bound session device", async () => {
@@ -416,20 +478,7 @@ describe("device authorization and terminal binding security", () => {
   });
 
   it("requires explicit terminal selection when multiple active terminals exist", async () => {
-    const multipleTerminals = [
-      {
-        code: "POS-1",
-        id: "77777777-7777-4777-8777-777777777777",
-        location_id: "22222222-2222-4222-8222-222222222222",
-        name: "Kasir 1",
-      },
-      {
-        code: "POS-2",
-        id: "99999999-9999-4999-8999-999999999999",
-        location_id: "22222222-2222-4222-8222-222222222222",
-        name: "Kasir 2",
-      },
-    ];
+    const multipleTerminals = [activeTerminal, terminal2];
     const database = new MockAuthDatabase(activeSessionRow, multipleTerminals);
 
     const response = await handleRequest(
@@ -449,19 +498,94 @@ describe("device authorization and terminal binding security", () => {
     expect(body.error.code).toBe("TERMINAL_SELECTION_REQUIRED");
   });
 
-  it("allows explicit device enrollment through POST /api/v1/auth/enroll-device", async () => {
-    const unboundOwnerSession = {
+  it("allows terminal discovery with unbound session, followed by device enrollment and terminal selection", async () => {
+    const freshDeviceId = "33333333-3333-4333-8333-333333333333";
+    const multipleTerminals = [activeTerminal, terminal2];
+    let currentSession: Record<string, unknown> = {
       ...activeSessionRow,
       primary_role: "OWNER",
       session_device_id: null,
     };
-    const database = new MockAuthDatabase(unboundOwnerSession, [activeTerminal]);
+    let registeredDevice: Record<string, unknown> | undefined;
 
-    const response = await handleRequest(
+    const dynamicDatabase: RequestDatabase = {
+      async close() {},
+      async query<TRow = Readonly<Record<string, unknown>>>(
+        text: string,
+        values: readonly unknown[] = [],
+      ): Promise<SqlQueryResult<TRow>> {
+        if (text.includes("FROM identity.sessions s")) {
+          return { rowCount: 1, rows: [currentSession as unknown as TRow] };
+        }
+        if (text.includes("SELECT t.id, t.name, t.code, t.status, t.location_id, l.name AS location_name")) {
+          return { rowCount: multipleTerminals.length, rows: multipleTerminals as unknown as TRow[] };
+        }
+        if (text.includes("FROM core.terminals") && text.includes("WHERE")) {
+          const terminalId = String(values[0]);
+          const match = multipleTerminals.find((t) => t.id === terminalId);
+          return { rowCount: match ? 1 : 0, rows: match ? [match as unknown as TRow] : [] };
+        }
+        if (text.includes("FROM identity.membership_roles")) {
+          return {
+            rowCount: 1,
+            rows: [{ code: "workspace.pos.access", effect: null }] as unknown as TRow[],
+          };
+        }
+        if (text.includes("FROM identity.devices WHERE id = $1")) {
+          return {
+            rowCount: registeredDevice ? 1 : 0,
+            rows: registeredDevice ? [registeredDevice as unknown as TRow] : [],
+          };
+        }
+        if (text.includes("INSERT INTO identity.devices")) {
+          registeredDevice = {
+            business_id: activeSessionRow.business_id,
+            id: values[0],
+            status: "ACTIVE",
+          };
+          return { rowCount: 1, rows: [] };
+        }
+        if (text.includes("UPDATE identity.sessions SET device_id")) {
+          currentSession = {
+            ...currentSession,
+            device_status: "ACTIVE",
+            session_device_id: values[0],
+          };
+          return { rowCount: 1, rows: [] };
+        }
+        return { rowCount: 1, rows: [] };
+      },
+      async transaction<TResult>(
+        operation: (executor: RequestDatabase) => Promise<TResult>,
+      ): Promise<TResult> {
+        return operation(this);
+      },
+    };
+
+    // Step 1: Terminal discovery before device enrollment must NOT deadlock
+    const termDiscoveryResponse = await handleRequest(
+      new Request("https://api.kastur.test/api/v1/auth/terminals", {
+        headers: {
+          Authorization: "Bearer mock-session-token-32-chars-long",
+          "X-Kastur-Client": "pos",
+        },
+      }),
+      {},
+      { database: dynamicDatabase },
+    );
+    expect(termDiscoveryResponse.status).toBe(200);
+    const termsBody = (await termDiscoveryResponse.json()) as {
+      data: Array<{ id: string; name: string }>;
+    };
+    expect(termsBody.data.length).toBe(2);
+    expect(termsBody.data[1]?.name).toBe("Kasir 2");
+
+    // Step 2: Enroll device
+    const enrollResponse = await handleRequest(
       new Request("https://api.kastur.test/api/v1/auth/enroll-device", {
         body: JSON.stringify({
-          device_id: "33333333-3333-4333-8333-333333333333",
-          device_name: "Tablet Kasir 1",
+          device_id: freshDeviceId,
+          device_name: "Tablet Kasir 2",
         }),
         headers: {
           Authorization: "Bearer mock-session-token-32-chars-long",
@@ -471,16 +595,87 @@ describe("device authorization and terminal binding security", () => {
         method: "POST",
       }),
       {},
-      { database },
+      { database: dynamicDatabase },
     );
+    expect(enrollResponse.status).toBe(201);
 
-    expect(response.status).toBe(201);
-    const body = (await response.json()) as {
-      business_id: string;
-      device_id: string;
-      status: string;
+    // Step 3: Context resolution with selected terminal Kasir 2 succeeds!
+    const contextResponse = await handleRequest(
+      new Request("https://api.kastur.test/api/v1/auth/context", {
+        headers: {
+          Authorization: "Bearer mock-session-token-32-chars-long",
+          "X-Kastur-Client": "pos",
+          "X-Kastur-Device-Id": freshDeviceId,
+          "X-Terminal-Id": terminal2.id,
+        },
+      }),
+      {},
+      { database: dynamicDatabase },
+    );
+    expect(contextResponse.status).toBe(200);
+  });
+
+  it("applies configured ALLOWED_ORIGINS to error responses", async () => {
+    const environment = {
+      ALLOWED_ORIGINS: "https://pos.kastur.app",
     };
-    expect(body.device_id).toBe("33333333-3333-4333-8333-333333333333");
-    expect(body.status).toBe("ACTIVE");
+
+    const disallowed = await handleRequest(
+      new Request("https://api.kastur.test/api/v1/nonexistent", {
+        headers: { Origin: "https://evil.com" },
+      }),
+      environment,
+    );
+    expect(disallowed.status).toBe(404);
+    expect(disallowed.headers.get("access-control-allow-origin")).toBeNull();
+
+    const allowed = await handleRequest(
+      new Request("https://api.kastur.test/api/v1/nonexistent", {
+        headers: { Origin: "https://pos.kastur.app" },
+      }),
+      environment,
+    );
+    expect(allowed.status).toBe(404);
+    expect(allowed.headers.get("access-control-allow-origin")).toBe("https://pos.kastur.app");
+  });
+
+  it("verifies live database connectivity via /api/v1/system/health and /health/ready", async () => {
+    const healthyDatabase: RequestDatabase = {
+      async close() {},
+      async query<TRow = Readonly<Record<string, unknown>>>(): Promise<SqlQueryResult<TRow>> {
+        return { rowCount: 1, rows: [{ ready: 1 }] as unknown as TRow[] };
+      },
+      async transaction<TResult>(op: (db: RequestDatabase) => Promise<TResult>): Promise<TResult> {
+        return op(this);
+      },
+    };
+
+    const healthyResponse = await handleRequest(
+      new Request("https://api.kastur.test/health/ready"),
+      { DATABASE_URL: "postgres://mock" },
+      { database: healthyDatabase },
+    );
+    expect(healthyResponse.status).toBe(200);
+    await expect(healthyResponse.json()).resolves.toEqual({ status: "ok" });
+
+    const brokenDatabase: RequestDatabase = {
+      async close() {},
+      async query(): Promise<never> {
+        throw new Error("Connection refused");
+      },
+      async transaction<TResult>(op: (db: RequestDatabase) => Promise<TResult>): Promise<TResult> {
+        return op(this);
+      },
+    };
+
+    const brokenResponse = await handleRequest(
+      new Request("https://api.kastur.test/health/ready"),
+      { DATABASE_URL: "postgres://mock" },
+      { database: brokenDatabase },
+    );
+    expect(brokenResponse.status).toBe(503);
+    const body = (await brokenResponse.json()) as { reason: string; status: string };
+    expect(body.status).toBe("unhealthy");
+    expect(body.reason).toBe("DATABASE_UNAVAILABLE");
   });
 });

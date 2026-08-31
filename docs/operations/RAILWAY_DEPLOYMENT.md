@@ -63,9 +63,10 @@ Seluruh layanan dibangun dari monorepo tunggal `tekad-mandiri-pos`.
 3. Di tab **Settings**:
    - **Build Command**: `npm ci && npm run build --workspace @kastur/api`
    - **Start Command**: `npm run start --workspace @kastur/api`
-   - **Healthcheck Path**: `/health`
+   - **Healthcheck Path**: `/health/ready`
    - **Healthcheck Timeout**: `300` detik
 4. Di tab **Variables**:
+   - `NODE_ENV`: `production`
    - `DATABASE_URL`: `${{Postgres.DATABASE_URL}}`
    - `KASTUR_SETUP_TOKEN`: Hasilkan string acak aman (misal: `openssl rand -hex 24`).
    - `ALLOWED_ORIGINS`: Masukkan URL domain POS dan Back Office setelah domain terbuat.

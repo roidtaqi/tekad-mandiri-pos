@@ -70,6 +70,29 @@ async function routeAuthenticatedRequest(
     return await enrollDevice(request, database, environment);
   }
 
+  if (request.method === "GET" && pathname === "/api/v1/auth/terminals") {
+    const context = await authenticateRequest(request, database, environment, {
+      skipDeviceCheck: true,
+      skipTerminalCheck: true,
+    });
+    const terminals = await database.query(
+      `SELECT t.id, t.name, t.code, t.status, t.location_id, l.name AS location_name
+       FROM core.terminals t
+       JOIN core.locations l ON l.id = t.location_id
+       WHERE t.business_id = $1 AND t.status = 'ACTIVE'
+       ORDER BY t.created_at ASC`,
+      [context.authorization.membership.business_id],
+    );
+    return json(
+      {
+        data: terminals.rows,
+        meta: { server_time: new Date().toISOString() },
+      },
+      {},
+      { allowedOrigins: environment.ALLOWED_ORIGINS, request },
+    );
+  }
+
   const context = await authenticateRequest(request, database, environment);
 
   if (request.method === "GET" && pathname === "/api/v1/auth/context") {
@@ -86,20 +109,6 @@ async function routeAuthenticatedRequest(
       headers.delete("access-control-allow-origin");
     }
     return new Response(null, { headers, status: 204 });
-  }
-  if (request.method === "GET" && pathname === "/api/v1/auth/terminals") {
-    const terminals = await database.query(
-      `SELECT t.id, t.name, t.code, t.status, t.location_id, l.name AS location_name
-       FROM core.terminals t
-       JOIN core.locations l ON l.id = t.location_id
-       WHERE t.business_id = $1 AND t.status = 'ACTIVE'
-       ORDER BY t.created_at ASC`,
-      [context.authorization.membership.business_id],
-    );
-    return json({
-      data: terminals.rows,
-      meta: { server_time: new Date().toISOString() },
-    }, {}, { allowedOrigins: environment.ALLOWED_ORIGINS, request });
   }
   const backofficeMatch = pathname.match(/^\/api\/v1\/backoffice\/([^/]+)$/u);
   if (request.method === "GET" && backofficeMatch?.[1] !== undefined) {
@@ -255,6 +264,19 @@ async function routeSystemSetup(
   }
 
   if (request.method === "POST" && pathname === "/api/v1/system/setup") {
+    const isProduction = environment.NODE_ENV === "production";
+
+    if (
+      isProduction &&
+      (!environment.KASTUR_SETUP_TOKEN || environment.KASTUR_SETUP_TOKEN.trim() === "")
+    ) {
+      throw new ApiError(
+        503,
+        "SETUP_DISABLED",
+        "Inisialisasi sistem di lingkungan production memerlukan konfigurasi KASTUR_SETUP_TOKEN pada server.",
+      );
+    }
+
     const body = await readJsonObject(request);
 
     // Validate one-time setup token authorization
@@ -262,7 +284,7 @@ async function routeSystemSetup(
     const tokenBody = typeof body.setup_token === "string" ? body.setup_token : null;
     const providedToken = tokenHeader || tokenBody;
 
-    if (!verifySetupToken(providedToken, environment.KASTUR_SETUP_TOKEN)) {
+    if (!verifySetupToken(providedToken, environment.KASTUR_SETUP_TOKEN, environment.NODE_ENV)) {
       throw new ApiError(
         401,
         "SETUP_UNAUTHORIZED",
@@ -312,7 +334,6 @@ async function routeSystemSetup(
       const locationId = crypto.randomUUID();
       const ownerUserId = crypto.randomUUID();
       const membershipId = crypto.randomUUID();
-      const deviceId = crypto.randomUUID();
       const terminalId = crypto.randomUUID();
       const paymentMethodId = crypto.randomUUID();
       const categoryId = crypto.randomUUID();
@@ -365,12 +386,6 @@ async function routeSystemSetup(
       );
 
       await tx.query(
-        `INSERT INTO identity.devices (id, business_id, code, display_name, device_type, status)
-         VALUES ($1, $2, $3, $4, 'PWA', 'ACTIVE')`,
-        [deviceId, businessId, `DEV-${deviceId.slice(0, 8)}`, terminalName],
-      );
-
-      await tx.query(
         `INSERT INTO core.terminals (id, business_id, location_id, code, name, status)
          VALUES ($1, $2, $3, 'POS-1', $4, 'ACTIVE')`,
         [terminalId, businessId, locationId, terminalName],
@@ -390,8 +405,8 @@ async function routeSystemSetup(
 
       await tx.query(
         `INSERT INTO identity.sessions (id, user_id, business_id, device_id, session_secret_hash, issued_at, expires_at)
-         VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '30 days')`,
-        [sessionId, ownerUserId, businessId, deviceId, sessionHash],
+         VALUES ($1, $2, $3, NULL, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '30 days')`,
+        [sessionId, ownerUserId, businessId, sessionHash],
       );
 
       await tx.query(
@@ -402,15 +417,14 @@ async function routeSystemSetup(
            authorization_version
          ) VALUES (
            $1, $2, $3, 'USER', $4, 'OWNER', 'BUSINESS_BOOTSTRAPPED',
-           'business', $2, CURRENT_TIMESTAMP, $5, $6,
-           'Initial system setup via API', $7::jsonb, $8, 1
+           'business', $2, CURRENT_TIMESTAMP, NULL, $5,
+           'Initial system setup via API', $6::jsonb, $7, 1
          )`,
         [
           auditId,
           businessId,
           locationId,
           ownerUserId,
-          deviceId,
           sessionId,
           JSON.stringify({
             business_name: businessName,
@@ -425,7 +439,6 @@ async function routeSystemSetup(
         {
           business_id: businessId,
           business_name: businessName,
-          device_id: deviceId,
           location_id: locationId,
           location_name: locationName,
           message: "Bisnis awal berhasil diinisialisasi.",
@@ -476,7 +489,12 @@ export async function handleRequest(
     const body = { status: "ok" } satisfies SystemHealthResponse;
     return json(body, {}, { allowedOrigins: environment.ALLOWED_ORIGINS, request });
   }
-  if (request.method === "GET" && url.pathname === "/api/v1/system/health") {
+  if (
+    request.method === "GET" &&
+    (url.pathname === "/api/v1/system/health" ||
+      url.pathname === "/health/ready" ||
+      url.pathname === "/ready")
+  ) {
     const hasDatabase =
       Boolean(environment.HYPERDRIVE?.connectionString) ||
       Boolean(environment.DATABASE_URL?.trim());
@@ -487,11 +505,30 @@ export async function handleRequest(
         { allowedOrigins: environment.ALLOWED_ORIGINS, request },
       );
     }
-    return json(
-      { status: "ok" },
-      {},
-      { allowedOrigins: environment.ALLOWED_ORIGINS, request },
-    );
+    let database = dependencies.database;
+    let ownsDatabase = false;
+    try {
+      if (database === undefined) {
+        database = new PgRequestDatabase(environment);
+        ownsDatabase = true;
+      }
+      await database.query("SELECT 1 AS ready");
+      return json(
+        { status: "ok" },
+        {},
+        { allowedOrigins: environment.ALLOWED_ORIGINS, request },
+      );
+    } catch {
+      return json(
+        { reason: "DATABASE_UNAVAILABLE", status: "unhealthy" },
+        { status: 503 },
+        { allowedOrigins: environment.ALLOWED_ORIGINS, request },
+      );
+    } finally {
+      if (ownsDatabase && database !== undefined) {
+        await database.close();
+      }
+    }
   }
   if (request.method === "GET" && url.pathname === "/api/v1/system/compatibility") {
     return json(
@@ -507,7 +544,10 @@ export async function handleRequest(
     );
   }
   if (!isDatabaseRoute(url.pathname)) {
-    return errorResponse(new ApiError(404, "NOT_FOUND", "Endpoint tidak ditemukan."));
+    return errorResponse(
+      new ApiError(404, "NOT_FOUND", "Endpoint tidak ditemukan."),
+      { allowedOrigins: environment.ALLOWED_ORIGINS, request },
+    );
   }
 
   let database = dependencies.database;
@@ -531,9 +571,13 @@ export async function handleRequest(
     if (error instanceof DatabaseConfigurationError) {
       return errorResponse(
         new ApiError(503, error.code, "Database API belum dikonfigurasi."),
+        { allowedOrigins: environment.ALLOWED_ORIGINS, request },
       );
     }
-    return errorResponse(error);
+    return errorResponse(error, {
+      allowedOrigins: environment.ALLOWED_ORIGINS,
+      request,
+    });
   } finally {
     if (ownsDatabase && database !== undefined) {
       await database.close();

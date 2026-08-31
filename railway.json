@@ -5,7 +5,7 @@
     "buildCommand": "npm ci && npm run build"
   },
   "deploy": {
-    "healthcheckPath": "/health",
+    "healthcheckPath": "/health/ready",
     "healthcheckTimeout": 300,
     "restartPolicyMaxRetries": 5,
     "restartPolicyType": "ON_FAILURE"

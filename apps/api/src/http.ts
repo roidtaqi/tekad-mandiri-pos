@@ -148,7 +148,10 @@ export function normalizeApiError(error: unknown): ApiError {
   return new ApiError(500, "INTERNAL_ERROR", "Terjadi kesalahan internal.");
 }
 
-export function errorResponse(error: unknown): Response {
+export function errorResponse(
+  error: unknown,
+  options?: JsonResponseOptions,
+): Response {
   const normalized = normalizeApiError(error);
   const body: ApiErrorBody = {
     error: {
@@ -157,7 +160,7 @@ export function errorResponse(error: unknown): Response {
       message: normalized.message,
     },
   };
-  return json(body, { status: normalized.status });
+  return json(body, { status: normalized.status }, options);
 }
 
 export async function readJsonObject(
