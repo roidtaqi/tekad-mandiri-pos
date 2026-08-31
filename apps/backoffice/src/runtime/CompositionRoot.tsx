@@ -131,6 +131,58 @@ export function BackofficeCompositionRoot({
     [effectiveApiBaseUrl, options.fetchImplementation, storage],
   );
 
+  const login = useCallback(
+    async ({ email, password }: { readonly email: string; readonly password: string }) => {
+      const generation = ++generationRef.current;
+      setState({ status: "checking" });
+
+      const rawBase = effectiveApiBaseUrl ?? "";
+      const baseUrl =
+        rawBase.trim() === ""
+          ? ""
+          : rawBase.endsWith("/")
+            ? rawBase.slice(0, -1)
+            : rawBase;
+      const loginUrl = `${baseUrl}/api/v1/auth/login`;
+      const fetchImpl = options.fetchImplementation ?? fetch;
+
+      try {
+        const response = await fetchImpl(loginUrl, {
+          body: JSON.stringify({ client: "backoffice", email, password }),
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+          method: "POST",
+        });
+
+        const body = (await response.json().catch(() => null)) as {
+          readonly data?: { readonly session_secret?: string };
+          readonly error?: { readonly message?: string };
+        } | null;
+
+        if (!response.ok || !body?.data?.session_secret) {
+          throw new HttpError(
+            response.status,
+            "CREDENTIALS_INVALID",
+            body?.error?.message ?? "Email atau password tidak sesuai.",
+          );
+        }
+
+        const sessionSecret = body.data.session_secret;
+        await verify(sessionSecret, true);
+      } catch (error: unknown) {
+        if (generation === generationRef.current) {
+          setState({
+            errorMessage: publicSessionError(error),
+            status: "signed-out",
+          });
+        }
+      }
+    },
+    [effectiveApiBaseUrl, options.fetchImplementation, verify],
+  );
+
   useEffect(() => {
     const initialBearer = initialBearerRef.current;
     if (initialBearer === null) {
@@ -177,11 +229,8 @@ export function BackofficeCompositionRoot({
 
     return (
       <SessionEntry
-        {...(state.errorMessage === undefined ? {} : { errorMessage: state.errorMessage })}
-        {...(state.retryBearer === undefined
-          ? {}
-          : { onRetry: () => void verify(state.retryBearer!, false) })}
-        onSubmit={(bearer) => void verify(bearer, true)}
+        errorMessage={state.errorMessage}
+        onLogin={(credentials) => void login(credentials)}
       />
     );
   }

@@ -19,6 +19,24 @@ export interface OfflineAuthorizationGrant {
   readonly signature: string;
 }
 
+export interface LoginRequest {
+  readonly email: string;
+  readonly password: string;
+  readonly client?: "pos" | "backoffice" | undefined;
+}
+
+export interface LoginResponseData {
+  readonly business_id: string;
+  readonly default_location_id: string | null;
+  readonly primary_role: string;
+  readonly session_secret: string;
+  readonly user: {
+    readonly display_name: string;
+    readonly email: string | null;
+    readonly id: string;
+  };
+}
+
 export interface AuthContextResponse {
   user: {
     id: string;

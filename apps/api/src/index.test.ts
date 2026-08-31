@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { RequestDatabase, SqlQueryResult } from "./database.js";
 import { handleRequest } from "./index.js";
 import worker from "./index";
+import { hashPassword } from "./password.js";
 
 class MockSetupDatabase implements RequestDatabase {
   #businesses: Array<{ id: string; name: string }> = [];
@@ -703,5 +704,156 @@ describe("device authorization and terminal binding security", () => {
     const body = (await brokenResponse.json()) as { reason: string; status: string };
     expect(body.status).toBe("unhealthy");
     expect(body.reason).toBe("DATABASE_UNAVAILABLE");
+  });
+
+  it("authenticates active users via POST /api/v1/auth/login, sets session cookie, and allows logout", async () => {
+    const hashedPassword = await hashPassword("ValidPassword123!");
+
+    const users: Array<Record<string, unknown>> = [
+      {
+        algorithm: hashedPassword.algorithm,
+        business_id: "biz-1",
+        default_location_id: "loc-1",
+        display_name: "Owner Test",
+        email: "owner@kastur.local",
+        iterations: hashedPassword.iterations,
+        membership_status: "ACTIVE",
+        password_hash: hashedPassword.hash,
+        password_salt: hashedPassword.salt,
+        primary_role: "OWNER",
+        user_id: "user-1",
+        user_status: "ACTIVE",
+      },
+      {
+        algorithm: hashedPassword.algorithm,
+        business_id: "biz-2",
+        default_location_id: "loc-2",
+        display_name: "Inactive User",
+        email: "inactive@kastur.local",
+        iterations: hashedPassword.iterations,
+        membership_status: "INACTIVE",
+        password_hash: hashedPassword.hash,
+        password_salt: hashedPassword.salt,
+        primary_role: "CASHIER",
+        user_id: "user-2",
+        user_status: "ACTIVE",
+      },
+    ];
+
+    class MockLoginDatabase implements RequestDatabase {
+      #sessions: Array<Record<string, unknown>> = [];
+
+      async close(): Promise<void> {}
+
+      async transaction<TResult>(
+        operation: (executor: RequestDatabase) => Promise<TResult>,
+      ): Promise<TResult> {
+        return operation(this);
+      }
+
+      async query<TRow = Readonly<Record<string, unknown>>>(
+        text: string,
+        values: readonly unknown[] = [],
+      ): Promise<SqlQueryResult<TRow>> {
+        if (text.includes("FROM identity.users u") && text.includes("JOIN identity.password_credentials pc")) {
+          const email = String(values[0]).toLowerCase();
+          const match = users.find((u) => String(u.email).toLowerCase() === email);
+          return {
+            rowCount: match ? 1 : 0,
+            rows: match ? [match as unknown as TRow] : [],
+          };
+        }
+        if (text.includes("INSERT INTO identity.sessions")) {
+          this.#sessions.push({ id: values[0], user_id: values[1], session_secret_hash: values[3] });
+          return { rowCount: 1, rows: [] };
+        }
+        if (text.includes("INSERT INTO audit.audit_events")) {
+          return { rowCount: 1, rows: [] };
+        }
+        if (text.includes("UPDATE identity.sessions SET revoked_at = CURRENT_TIMESTAMP")) {
+          return { rowCount: 1, rows: [] };
+        }
+        return { rowCount: 1, rows: [] };
+      }
+    }
+
+    const db = new MockLoginDatabase();
+
+    // 1. Successful Login
+    const validLogin = await handleRequest(
+      new Request("https://api.kastur.test/api/v1/auth/login", {
+        body: JSON.stringify({
+          client: "pos",
+          email: "owner@kastur.local",
+          password: "ValidPassword123!",
+        }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      }),
+      { ALLOWED_ORIGINS: "https://pos.kastur.app" },
+      { database: db },
+    );
+
+    expect(validLogin.status).toBe(200);
+    const loginData = (await validLogin.json()) as {
+      readonly data: {
+        readonly business_id: string;
+        readonly session_secret: string;
+        readonly user: { readonly id: string; readonly display_name: string };
+      };
+    };
+    expect(loginData.data.business_id).toBe("biz-1");
+    expect(loginData.data.user.display_name).toBe("Owner Test");
+    expect(typeof loginData.data.session_secret).toBe("string");
+    expect(loginData.data.session_secret.length).toBeGreaterThan(20);
+
+    const setCookie = validLogin.headers.get("set-cookie");
+    expect(setCookie).toContain(`kastur_session=${loginData.data.session_secret}`);
+    expect(setCookie).toContain("HttpOnly");
+
+    // 2. Wrong Password -> 401
+    const wrongPassword = await handleRequest(
+      new Request("https://api.kastur.test/api/v1/auth/login", {
+        body: JSON.stringify({
+          email: "owner@kastur.local",
+          password: "WrongPassword!",
+        }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      }),
+      {},
+      { database: db },
+    );
+    expect(wrongPassword.status).toBe(401);
+
+    // 3. Unknown User -> 401
+    const unknownUser = await handleRequest(
+      new Request("https://api.kastur.test/api/v1/auth/login", {
+        body: JSON.stringify({
+          email: "nonexistent@kastur.local",
+          password: "AnyPassword123!",
+        }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      }),
+      {},
+      { database: db },
+    );
+    expect(unknownUser.status).toBe(401);
+
+    // 4. Inactive Membership -> 403
+    const inactiveUser = await handleRequest(
+      new Request("https://api.kastur.test/api/v1/auth/login", {
+        body: JSON.stringify({
+          email: "inactive@kastur.local",
+          password: "ValidPassword123!",
+        }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      }),
+      {},
+      { database: db },
+    );
+    expect(inactiveUser.status).toBe(403);
   });
 });

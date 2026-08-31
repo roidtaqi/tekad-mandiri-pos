@@ -10,7 +10,7 @@ afterEach(() => {
 });
 
 describe("FirstRunSetup Component", () => {
-  it("submits setup token via X-Kastur-Setup-Token header only (not in JSON body)", async () => {
+  it("submits setup token via X-Kastur-Setup-Token header and owner password, then logs in seamlessly", async () => {
     let capturedRequest: RequestInit | undefined;
 
     const mockFetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -37,7 +37,7 @@ describe("FirstRunSetup Component", () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText(/Kunci Inisialisasi Server/i), {
+    fireEvent.change(screen.getByLabelText(/Kunci Aktivasi Server/i), {
       target: { value: "railway-secret-setup-key" },
     });
 
@@ -45,7 +45,11 @@ describe("FirstRunSetup Component", () => {
       target: { value: "Toko Berkah Utama" },
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /Inisialisasi & Buat Toko/i }));
+    fireEvent.change(screen.getByLabelText(/Password Pemilik/i), {
+      target: { value: "Password123!" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Inisialisasi & Masuk ke Back Office/i }));
 
     // 1. Verify header has X-Kastur-Setup-Token
     expect(mockFetch).toHaveBeenCalledTimes(1);
@@ -53,19 +57,15 @@ describe("FirstRunSetup Component", () => {
     const headers = new Headers(capturedRequest?.headers);
     expect(headers.get("x-kastur-setup-token")).toBe("railway-secret-setup-key");
 
-    // 2. Verify JSON body does NOT contain setup_token
+    // 2. Verify JSON body does NOT contain setup_token and DOES contain owner_password
     const body = JSON.parse(String(capturedRequest?.body)) as Record<string, unknown>;
     expect(body.setup_token).toBeUndefined();
     expect(body.business_name).toBe("Toko Berkah Utama");
+    expect(body.owner_password).toBe("Password123!");
 
-    // 3. Verify success screen shows the POS session code and actions
-    expect(await screen.findByText(/Toko Berhasil Diinisialisasi!/i)).toBeDefined();
-    expect(screen.getByText("secret-session-token-32-chars-long")).toBeDefined();
-    expect(screen.getByRole("button", { name: /Salin Kode Sesi POS/i })).toBeDefined();
-
-    // 4. Click "Masuk ke Back Office Sekarang" triggers onComplete with session secret
-    fireEvent.click(screen.getByRole("button", { name: /Masuk ke Back Office Sekarang/i }));
-    expect(onComplete).toHaveBeenCalledWith("secret-session-token-32-chars-long");
+    // 3. Verify onComplete is triggered with the session secret immediately
+    await vi.waitFor(() => {
+      expect(onComplete).toHaveBeenCalledWith("secret-session-token-32-chars-long");
+    });
   });
 });
-

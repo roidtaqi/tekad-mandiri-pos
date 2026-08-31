@@ -84,9 +84,11 @@ export function json(
     const corsOrigin = resolveCorsOrigin(options.request, options.allowedOrigins);
     if (corsOrigin !== null) {
       headers.set("access-control-allow-origin", corsOrigin);
+      headers.set("access-control-allow-credentials", "true");
       headers.set("vary", "Origin");
     } else {
       headers.delete("access-control-allow-origin");
+      headers.delete("access-control-allow-credentials");
     }
   }
 

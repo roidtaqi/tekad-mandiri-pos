@@ -26,6 +26,8 @@ import {
 import {
   enrollDeviceApi,
   fetchAuthContext,
+  fetchAvailableTerminals,
+  loginPosApi,
   PosAuthApiError,
   revokePosSession,
 } from "./auth-api.js";
@@ -85,8 +87,10 @@ export interface PosRuntimeDependencies {
 }
 
 export interface ConnectSessionInput {
-  readonly bearer: string;
-  readonly terminalId?: string;
+  readonly bearer?: string | undefined;
+  readonly email?: string | undefined;
+  readonly password?: string | undefined;
+  readonly terminalId?: string | undefined;
 }
 
 export interface SubmitReturnInput {
@@ -96,7 +100,9 @@ export interface SubmitReturnInput {
 }
 
 export interface RecoverOutboxInput {
-  readonly approverBearer: string;
+  readonly approverBearer?: string | undefined;
+  readonly approverEmail?: string | undefined;
+  readonly approverPassword?: string | undefined;
   readonly reason: string;
 }
 
@@ -260,12 +266,45 @@ export function PosRuntimeProvider({
   }, [loadOperationalState, operational]);
 
   const connect = useCallback(
-    async ({ bearer, terminalId: requestedTerminalId }: ConnectSessionInput): Promise<void> => {
-      const cleanBearer = bearer.trim();
-      const cleanTerminalId = requestedTerminalId?.trim() ?? "";
+    async (input: ConnectSessionInput): Promise<void> => {
+      let cleanBearer = (input.bearer ?? "").trim();
+      let cleanTerminalId = input.terminalId?.trim() ?? "";
+
+      if (cleanBearer === "" && input.email && input.password) {
+        setStatus("CONNECTING");
+        setError(null);
+        try {
+          const loginResult = await loginPosApi(
+            config.apiBaseUrl,
+            input.email,
+            input.password,
+            fetchImplementation,
+          );
+          cleanBearer = loginResult.session_secret;
+          if (cleanTerminalId === "") {
+            try {
+              const terminals = await fetchAvailableTerminals(
+                config.apiBaseUrl,
+                cleanBearer,
+                fetchImplementation,
+              );
+              if (terminals.length > 0 && terminals[0] !== undefined) {
+                cleanTerminalId = terminals[0].id;
+              }
+            } catch {
+              // Ignore terminal lookup errors; bootstrap will resolve default terminal
+            }
+          }
+        } catch (loginErr: unknown) {
+          setStatus("ERROR");
+          setError(messageFromError(loginErr));
+          return;
+        }
+      }
+
       if (cleanBearer === "") {
         setStatus("ERROR");
-        setError("Sesi pengguna wajib diisi.");
+        setError("Email dan password atau sesi pengguna wajib diisi.");
         return;
       }
 
@@ -476,8 +515,27 @@ export function PosRuntimeProvider({
   }, [now, operational, status]);
 
   const recoverOutbox = useCallback(
-    async ({ approverBearer, reason }: RecoverOutboxInput): Promise<void> => {
-      const cleanApproverBearer = approverBearer.trim();
+    async ({
+      approverBearer,
+      approverEmail,
+      approverPassword,
+      reason,
+    }: RecoverOutboxInput): Promise<void> => {
+      let cleanApproverBearer = (approverBearer ?? "").trim();
+      if (cleanApproverBearer === "" && approverEmail && approverPassword) {
+        try {
+          const loginResult = await loginPosApi(
+            config.apiBaseUrl,
+            approverEmail,
+            approverPassword,
+            fetchImplementation,
+          );
+          cleanApproverBearer = loginResult.session_secret;
+        } catch (loginErr: unknown) {
+          setError(`Autentikasi approver gagal: ${messageFromError(loginErr)}`);
+          return;
+        }
+      }
       const cleanReason = reason.trim();
       const cached = readCachedSession();
       if (
@@ -495,7 +553,7 @@ export function PosRuntimeProvider({
         return;
       }
       if (cleanApproverBearer === "" || cleanReason.length < 10 || cleanReason.length > 500) {
-        setError("Sesi approver dan alasan recovery 10–500 karakter wajib diisi.");
+        setError("Sesi atau akun approver dan alasan recovery 10–500 karakter wajib diisi.");
         return;
       }
 

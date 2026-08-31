@@ -38,7 +38,7 @@ afterEach(() => {
 });
 
 describe("Back Office production runtime", () => {
-  it("shows operator session entry when the tab has no session", async () => {
+  it("shows operator login entry when the tab has no session", async () => {
     render(
       <MemoryRouter>
         <App />
@@ -46,12 +46,28 @@ describe("Back Office production runtime", () => {
     );
 
     expect(await screen.findByRole("heading", { name: "Masuk ke Back Office" })).toBeDefined();
-    expect(screen.getByLabelText(/Kode sesi pengguna/i)).toHaveProperty("type", "password");
+    expect(screen.getByLabelText(/^Email/i)).toHaveProperty("type", "email");
+    expect(screen.getByLabelText(/^Password/i)).toHaveProperty("type", "password");
   });
 
-  it("verifies an entered bearer, stores it in sessionStorage, and loads overview", async () => {
+  it("authenticates using email and password, stores session in sessionStorage, and loads overview", async () => {
     const fetchImplementation = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = requestPath(input);
+      if (path === "/api/v1/auth/login") {
+        return json({
+          data: {
+            business_id: "business-1",
+            default_location_id: "location-1",
+            primary_role: "OWNER",
+            session_secret: bearer,
+            user: {
+              display_name: "Owner",
+              email: "owner@kastur.local",
+              id: "user-1",
+            },
+          },
+        });
+      }
       if (path === "/api/v1/auth/context") {
         return json({ data: authContext(["workspace.backoffice.access"]) });
       }
@@ -80,14 +96,22 @@ describe("Back Office production runtime", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.change(await screen.findByLabelText(/Kode sesi pengguna/i), {
-      target: { value: bearer },
+    fireEvent.change(await screen.findByLabelText(/^Email/i), {
+      target: { value: "owner@kastur.local" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Verifikasi sesi" }));
+    fireEvent.change(screen.getByLabelText(/^Password/i), {
+      target: { value: "Password123!" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Masuk" }));
 
     expect(await screen.findByRole("heading", { name: "Ringkasan" })).toBeDefined();
     expect(await screen.findByText(/Rp\s+125\.000/u)).toBeDefined();
     expect(window.sessionStorage.getItem(BACKOFFICE_SESSION_KEY)).toBe(bearer);
+
+    const loginCall = fetchImplementation.mock.calls.find(
+      ([input]) => requestPath(input) === "/api/v1/auth/login",
+    );
+    expect(loginCall).toBeDefined();
 
     const authCall = fetchImplementation.mock.calls.find(
       ([input]) => requestPath(input) === "/api/v1/auth/context",

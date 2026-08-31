@@ -42,6 +42,60 @@ function decodeAuthContext(value: unknown): AuthContextResponse {
   return value as unknown as AuthContextResponse;
 }
 
+export interface PosLoginResult {
+  readonly business_id: string;
+  readonly default_location_id: string | null;
+  readonly primary_role: string;
+  readonly session_secret: string;
+  readonly user: {
+    readonly display_name: string;
+    readonly email: string | null;
+    readonly id: string;
+  };
+}
+
+export async function loginPosApi(
+  apiBaseUrl: string,
+  email: string,
+  password: string,
+  fetchImplementation: typeof fetch = fetch,
+): Promise<PosLoginResult> {
+  const response = await fetchImplementation(new URL("/api/v1/auth/login", apiBaseUrl), {
+    body: JSON.stringify({
+      client: "pos",
+      email: email.trim(),
+      password,
+    }),
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  });
+
+  const body: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const error = isRecord(body) && isRecord(body.error) ? body.error : null;
+    throw new PosAuthApiError(
+      error !== null && typeof error.message === "string"
+        ? error.message
+        : "Email atau password tidak sesuai.",
+      response.status,
+      error !== null && typeof error.code === "string" ? error.code : `HTTP_${response.status}`,
+    );
+  }
+
+  if (!isRecord(body) || !isRecord(body.data) || typeof body.data.session_secret !== "string") {
+    throw new PosAuthApiError(
+      "Respons login tidak valid.",
+      500,
+      "INVALID_LOGIN_RESPONSE",
+    );
+  }
+
+  return body.data as unknown as PosLoginResult;
+}
+
 export async function fetchAuthContext(
   apiBaseUrl: string,
   bearer: string,
@@ -86,8 +140,6 @@ export async function revokePosSession(
   fetchImplementation: typeof fetch = fetch,
 ): Promise<void> {
   const response = await fetchImplementation(new URL("/api/v1/auth/logout", apiBaseUrl), {
-    method: "POST",
-    keepalive: true,
     headers: {
       Accept: "application/json",
       Authorization: `Bearer ${bearer}`,
@@ -95,6 +147,8 @@ export async function revokePosSession(
       "X-Kastur-Device-Id": deviceId,
       "X-Terminal-Id": terminalId,
     },
+    keepalive: true,
+    method: "POST",
   });
   if (!response.ok && response.status !== 401) {
     throw new PosAuthApiError(
@@ -106,11 +160,11 @@ export async function revokePosSession(
 }
 
 export interface AvailableTerminal {
-  readonly id: string;
-  readonly name: string;
   readonly code: string;
-  readonly location_name: string;
+  readonly id: string;
   readonly location_id: string;
+  readonly location_name: string;
+  readonly name: string;
 }
 
 export async function fetchAvailableTerminals(

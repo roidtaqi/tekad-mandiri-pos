@@ -11,17 +11,20 @@ import {
 } from "@kastur/ui";
 
 export interface SessionEntryProps {
-  readonly errorMessage?: string;
-  readonly onRetry?: () => void;
-  readonly onSubmit: (bearer: string) => void;
+  readonly errorMessage?: string | undefined;
+  readonly loading?: boolean | undefined;
+  readonly onLogin: (credentials: { email: string; password: string }) => void;
 }
 
-export function SessionEntry({ errorMessage, onRetry, onSubmit }: SessionEntryProps) {
-  const [bearer, setBearer] = useState("");
+export function SessionEntry({ errorMessage, loading = false, onLogin }: SessionEntryProps) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    onSubmit(bearer);
+    if (email.trim() && password) {
+      onLogin({ email: email.trim(), password });
+    }
   }
 
   return (
@@ -36,38 +39,48 @@ export function SessionEntry({ errorMessage, onRetry, onSubmit }: SessionEntryPr
               Masuk ke Back Office
             </Heading>
             <Text tone="secondary">
-              Masukkan kode sesi pengguna Anda. Kode hanya disimpan untuk tab browser ini.
+              Masukkan email dan password akun Anda untuk mengelola toko.
             </Text>
           </Stack>
 
           {errorMessage === undefined ? null : (
-            <Alert severity="CRITICAL" title="Sesi tidak dapat digunakan">
+            <Alert severity="CRITICAL" title="Gagal Masuk">
               <Text>{errorMessage}</Text>
             </Alert>
           )}
 
           <form onSubmit={handleSubmit}>
             <Stack gap={3}>
-              <Field label="Kode sesi pengguna" required>
+              <Field label="Email" required>
                 <Input
-                  autoComplete="off"
+                  autoComplete="email"
                   autoFocus
-                  name="session-bearer"
-                  onChange={(event) => setBearer(event.target.value)}
+                  name="email"
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="owner@kastur.local"
+                  required
+                  spellCheck={false}
+                  type="email"
+                  value={email}
+                />
+              </Field>
+
+              <Field label="Password" required>
+                <Input
+                  autoComplete="current-password"
+                  name="password"
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="••••••••"
                   required
                   spellCheck={false}
                   type="password"
-                  value={bearer}
+                  value={password}
                 />
               </Field>
-              <Button fullWidth type="submit">
-                Verifikasi sesi
+
+              <Button fullWidth loading={loading} type="submit">
+                Masuk
               </Button>
-              {onRetry === undefined ? null : (
-                <Button fullWidth onClick={onRetry} type="button" variant="secondary">
-                  Coba sesi tersimpan lagi
-                </Button>
-              )}
             </Stack>
           </form>
         </Stack>

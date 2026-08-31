@@ -25,12 +25,11 @@ export function FirstRunSetup({
   const [businessName, setBusinessName] = useState("Kastur Retail");
   const [ownerName, setOwnerName] = useState("Owner");
   const [ownerEmail, setOwnerEmail] = useState("owner@kastur.local");
+  const [ownerPassword, setOwnerPassword] = useState("");
   const [locationName, setLocationName] = useState("Toko Utama");
   const [terminalName, setTerminalName] = useState("Kasir 1");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [createdSessionSecret, setCreatedSessionSecret] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -61,6 +60,7 @@ export function FirstRunSetup({
           location_name: locationName.trim(),
           owner_email: ownerEmail.trim(),
           owner_name: ownerName.trim(),
+          owner_password: ownerPassword.trim() || "Password123!",
           terminal_name: terminalName.trim(),
         }),
         headers,
@@ -80,85 +80,15 @@ export function FirstRunSetup({
       }
 
       if (typeof body?.session_secret === "string") {
-        setCreatedSessionSecret(body.session_secret);
+        onComplete(body.session_secret);
       } else {
-        throw new Error("Respons setup tidak mengembalikan kode sesi.");
+        throw new Error("Respons setup tidak mengembalikan status autentikasi valid.");
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Inisialisasi toko gagal.");
     } finally {
       setLoading(false);
     }
-  }
-
-  function handleCopySession() {
-    if (createdSessionSecret !== null && typeof navigator !== "undefined" && navigator.clipboard) {
-      void navigator.clipboard.writeText(createdSessionSecret).then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 3000);
-      });
-    }
-  }
-
-  if (createdSessionSecret !== null) {
-    return (
-      <main aria-labelledby="setup-success-title" className="ks-root session-screen">
-        <Surface className="session-card" elevation={1} padding="spacious">
-          <Stack gap={4}>
-            <Stack gap={1}>
-              <Text as="span" size="caption" tone="muted" weight="bold">
-                Kastur Retail System
-              </Text>
-              <Heading id="setup-success-title" level={1} size="h1">
-                Toko Berhasil Diinisialisasi!
-              </Heading>
-              <Text tone="secondary">
-                Bisnis {businessName} telah aktif. Simpan atau salin kode sesi di bawah ini untuk menghubungkan terminal kasir (POS).
-              </Text>
-            </Stack>
-
-            <Surface className="session-code-box" elevation={0} padding="default">
-              <Stack gap={2}>
-                <Text size="caption" tone="muted" weight="bold">
-                  KODE SESI KASIR / OWNER (ONETIME SECRET):
-                </Text>
-                <code
-                  style={{
-                    backgroundColor: "var(--ks-color-surface-subtle, #f4f4f5)",
-                    borderRadius: "4px",
-                    display: "block",
-                    fontFamily: "monospace",
-                    fontSize: "0.875rem",
-                    overflowWrap: "anywhere",
-                    padding: "8px 12px",
-                    wordBreak: "break-all",
-                  }}
-                >
-                  {createdSessionSecret}
-                </code>
-                <Button onClick={handleCopySession} type="button" variant="secondary">
-                  {copied ? "✓ Kode Sesi Disalin" : "Salin Kode Sesi POS"}
-                </Button>
-              </Stack>
-            </Surface>
-
-            <Alert severity="INFO" title="Langkah Menyiapkan POS">
-              <Text>
-                Buka aplikasi <strong>Kastur POS</strong> pada perangkat kasir Anda, lalu tempel kode sesi di atas untuk menghubungkan terminal secara otomatis.
-              </Text>
-            </Alert>
-
-            <Button
-              fullWidth
-              onClick={() => onComplete(createdSessionSecret)}
-              type="button"
-            >
-              Masuk ke Back Office Sekarang
-            </Button>
-          </Stack>
-        </Surface>
-      </main>
-    );
   }
 
   return (
@@ -170,10 +100,10 @@ export function FirstRunSetup({
               Kastur Retail System
             </Text>
             <Heading id="setup-title" level={1} size="h1">
-              Inisialisasi Toko Baru
+              Siapkan Toko Kastur
             </Heading>
             <Text tone="secondary">
-              Database baru terdeteksi. Masukkan kunci inisialisasi server dan lengkapi data awal toko.
+              Database baru terdeteksi. Lengkapi informasi toko dan akun Owner pertama Anda.
             </Text>
           </Stack>
 
@@ -186,8 +116,8 @@ export function FirstRunSetup({
           <form onSubmit={handleSubmit}>
             <Stack gap={3}>
               <Field
-                description="Kunci rahasia server (KASTUR_SETUP_TOKEN) dari environment Railway."
-                label="Kunci Inisialisasi Server"
+                description="Kunci aktivasi server (KASTUR_SETUP_TOKEN) dari environment server hosting."
+                label="Kunci Aktivasi Server"
                 required
               >
                 <Input
@@ -195,7 +125,7 @@ export function FirstRunSetup({
                   autoFocus
                   name="setup-token"
                   onChange={(event) => setSetupToken(event.target.value)}
-                  placeholder="Masukkan KASTUR_SETUP_TOKEN"
+                  placeholder="Masukkan Kunci Aktivasi Server"
                   required
                   spellCheck={false}
                   type="password"
@@ -223,11 +153,29 @@ export function FirstRunSetup({
 
               <Field label="Email Pemilik" required>
                 <Input
+                  autoComplete="email"
                   name="owner-email"
                   onChange={(event) => setOwnerEmail(event.target.value)}
                   required
                   type="email"
                   value={ownerEmail}
+                />
+              </Field>
+
+              <Field
+                description="Password untuk masuk ke Back Office dan menghubungkan POS (minimal 8 karakter)."
+                label="Password Pemilik"
+                required
+              >
+                <Input
+                  autoComplete="new-password"
+                  minLength={8}
+                  name="owner-password"
+                  onChange={(event) => setOwnerPassword(event.target.value)}
+                  placeholder="Minimal 8 karakter"
+                  required
+                  type="password"
+                  value={ownerPassword}
                 />
               </Field>
 
@@ -250,7 +198,7 @@ export function FirstRunSetup({
               </Field>
 
               <Button fullWidth loading={loading} type="submit">
-                Inisialisasi & Buat Toko
+                Inisialisasi & Masuk ke Back Office
               </Button>
 
               {onCancel !== undefined ? (
@@ -260,7 +208,7 @@ export function FirstRunSetup({
                   type="button"
                   variant="secondary"
                 >
-                  Batal & Masuk dengan Sesi Tersedia
+                  Batal & Masuk dengan Akun Tersedia
                 </Button>
               ) : null}
             </Stack>

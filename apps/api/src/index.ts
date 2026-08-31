@@ -18,6 +18,7 @@ import {
   listCatalogOptions,
   listProducts,
 } from "./catalog.js";
+import { hashPassword, verifyPassword } from "./password.js";
 import {
   DatabaseConfigurationError,
   PgRequestDatabase,
@@ -102,11 +103,14 @@ async function routeAuthenticatedRequest(
     await revokeCurrentSession(database, context);
     const corsOrigin = resolveCorsOrigin(request, environment.ALLOWED_ORIGINS);
     const headers = new Headers(jsonHeaders);
+    headers.set("Set-Cookie", "kastur_session=; Path=/; HttpOnly; Max-Age=0; SameSite=Lax");
     if (corsOrigin !== null) {
       headers.set("access-control-allow-origin", corsOrigin);
+      headers.set("access-control-allow-credentials", "true");
       headers.set("vary", "Origin");
     } else {
       headers.delete("access-control-allow-origin");
+      headers.delete("access-control-allow-credentials");
     }
     return new Response(null, { headers, status: 204 });
   }
@@ -317,6 +321,10 @@ async function routeSystemSetup(
         typeof body.owner_email === "string" && body.owner_email.trim() !== ""
           ? body.owner_email.trim()
           : "owner@kastur.local";
+      const ownerPassword =
+        typeof body.owner_password === "string" && body.owner_password.trim().length >= 8
+          ? body.owner_password.trim()
+          : "Password123!";
       const locationName =
         typeof body.location_name === "string" && body.location_name.trim() !== ""
           ? body.location_name.trim()
@@ -348,6 +356,7 @@ async function routeSystemSetup(
         .replace(/\//g, "_")
         .replace(/=+$/, "");
       const sessionHash = await sha256Hex(sessionSecret);
+      const hashedOwnerPassword = await hashPassword(ownerPassword);
 
       await tx.query(
         `INSERT INTO core.businesses (id, name, currency_code, timezone, status)
@@ -365,6 +374,18 @@ async function routeSystemSetup(
         `INSERT INTO identity.users (id, display_name, email, status)
          VALUES ($1, $2, $3, 'ACTIVE')`,
         [ownerUserId, ownerName, ownerEmail],
+      );
+
+      await tx.query(
+        `INSERT INTO identity.password_credentials (user_id, password_hash, password_salt, algorithm, iterations)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [
+          ownerUserId,
+          hashedOwnerPassword.hash,
+          hashedOwnerPassword.salt,
+          hashedOwnerPassword.algorithm,
+          hashedOwnerPassword.iterations,
+        ],
       );
 
       await tx.query(
@@ -435,6 +456,12 @@ async function routeSystemSetup(
         ],
       );
 
+      const responseHeaders = new Headers();
+      responseHeaders.set(
+        "Set-Cookie",
+        `kastur_session=${sessionSecret}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`,
+      );
+
       return json(
         {
           business_id: businessId,
@@ -449,13 +476,182 @@ async function routeSystemSetup(
           terminal_id: terminalId,
           terminal_name: terminalName,
         },
-        { status: 201 },
+        { headers: responseHeaders, status: 201 },
         { allowedOrigins: environment.ALLOWED_ORIGINS, request },
       );
     });
   }
 
   throw new ApiError(404, "NOT_FOUND", "Endpoint tidak ditemukan.");
+}
+
+export async function routeLogin(
+  request: Request,
+  database: RequestDatabase,
+  environment: ApiEnvironment,
+): Promise<Response> {
+  const body = await readJsonObject(request);
+  const email = stringValue(body.email, "email").trim();
+  const password = stringValue(body.password, "password");
+
+  if (!email || !password) {
+    throw new ApiError(
+      400,
+      "VALIDATION_ERROR",
+      "Email dan password wajib diisi.",
+    );
+  }
+
+  const result = await database.query<{
+    readonly algorithm: string;
+    readonly business_id: string;
+    readonly default_location_id: string | null;
+    readonly display_name: string;
+    readonly email: string | null;
+    readonly iterations: number;
+    readonly membership_status: string;
+    readonly password_hash: string;
+    readonly password_salt: string;
+    readonly primary_role: string | null;
+    readonly user_id: string;
+    readonly user_status: string;
+  }>(
+    `SELECT
+       u.id AS user_id,
+       u.display_name,
+       u.email,
+       u.status AS user_status,
+       m.business_id,
+       m.status AS membership_status,
+       pc.password_hash,
+       pc.password_salt,
+       pc.algorithm,
+       pc.iterations,
+       primary_role.code AS primary_role,
+       default_location.id AS default_location_id
+     FROM identity.users u
+     JOIN identity.business_memberships m ON m.user_id = u.id
+     JOIN identity.password_credentials pc ON pc.user_id = u.id
+     LEFT JOIN LATERAL (
+       SELECT r.code
+       FROM identity.membership_roles mr
+       JOIN identity.roles r ON r.id = mr.role_id
+       WHERE mr.membership_id = m.id
+         AND mr.is_primary = TRUE
+         AND r.status = 'ACTIVE'
+         AND (r.business_id IS NULL OR r.business_id = m.business_id)
+       LIMIT 1
+     ) primary_role ON TRUE
+     LEFT JOIN LATERAL (
+       SELECT l.id
+       FROM core.locations l
+       WHERE l.business_id = m.business_id
+         AND l.status = 'ACTIVE'
+       ORDER BY l.is_default DESC, l.created_at ASC
+       LIMIT 1
+     ) default_location ON TRUE
+     WHERE LOWER(u.email) = LOWER($1)
+     LIMIT 1`,
+    [email],
+  );
+
+  const row = result.rows[0];
+  if (row === undefined) {
+    throw new ApiError(
+      401,
+      "CREDENTIALS_INVALID",
+      "Email atau password tidak sesuai.",
+    );
+  }
+
+  if (row.user_status !== "ACTIVE" || row.membership_status !== "ACTIVE") {
+    throw new ApiError(
+      403,
+      "MEMBERSHIP_INACTIVE",
+      "Akses pengguna tidak aktif.",
+    );
+  }
+
+  const isValidPassword = await verifyPassword(
+    password,
+    row.password_hash,
+    row.password_salt,
+    row.iterations,
+  );
+
+  if (!isValidPassword) {
+    throw new ApiError(
+      401,
+      "CREDENTIALS_INVALID",
+      "Email atau password tidak sesuai.",
+    );
+  }
+
+  const sessionSecretBytes = new Uint8Array(32);
+  crypto.getRandomValues(sessionSecretBytes);
+  const sessionSecret = btoa(String.fromCharCode(...sessionSecretBytes))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+  const sessionHash = await sha256Hex(sessionSecret);
+  const sessionId = crypto.randomUUID();
+
+  await database.transaction(async (tx) => {
+    await tx.query(
+      `INSERT INTO identity.sessions (
+         id, user_id, business_id, device_id, session_secret_hash,
+         issued_at, expires_at
+       ) VALUES (
+         $1, $2, $3, NULL, $4, CURRENT_TIMESTAMP,
+         CURRENT_TIMESTAMP + INTERVAL '30 days'
+       )`,
+      [sessionId, row.user_id, row.business_id, sessionHash],
+    );
+
+    await tx.query(
+      `INSERT INTO audit.audit_events (
+         id, business_id, location_id, actor_type, actor_user_id,
+         actor_role_snapshot, action, entity_type, entity_id, occurred_at,
+         device_id, session_id, reason, correlation_id, authorization_version
+       ) VALUES (
+         $1, $2, $3, 'USER', $4, $5, 'USER_LOGIN', 'session', $6,
+         CURRENT_TIMESTAMP, NULL, $6, 'Email/password authentication', $7, 1
+       )`,
+      [
+        crypto.randomUUID(),
+        row.business_id,
+        row.default_location_id,
+        row.user_id,
+        row.primary_role ?? "OWNER",
+        sessionId,
+        crypto.randomUUID(),
+      ],
+    );
+  });
+
+  const responseHeaders = new Headers();
+  responseHeaders.set(
+    "Set-Cookie",
+    `kastur_session=${sessionSecret}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`,
+  );
+
+  return json(
+    {
+      data: {
+        business_id: row.business_id,
+        default_location_id: row.default_location_id,
+        primary_role: row.primary_role ?? "OWNER",
+        session_secret: sessionSecret,
+        user: {
+          display_name: row.display_name,
+          email: row.email,
+          id: row.user_id,
+        },
+      },
+    },
+    { headers: responseHeaders },
+    { allowedOrigins: environment.ALLOWED_ORIGINS, request },
+  );
 }
 
 export async function handleRequest(
@@ -471,9 +667,11 @@ export async function handleRequest(
     headers.set("access-control-max-age", "86400");
     if (corsOrigin !== null) {
       headers.set("access-control-allow-origin", corsOrigin);
+      headers.set("access-control-allow-credentials", "true");
       headers.set("vary", "Origin");
     } else {
       headers.delete("access-control-allow-origin");
+      headers.delete("access-control-allow-credentials");
     }
     return new Response(null, {
       headers,
@@ -559,6 +757,9 @@ export async function handleRequest(
     }
     if (url.pathname.startsWith("/api/v1/system/setup")) {
       return await routeSystemSetup(request, database, url, environment);
+    }
+    if (request.method === "POST" && url.pathname === "/api/v1/auth/login") {
+      return await routeLogin(request, database, environment);
     }
     if (
       request.method === "POST" &&

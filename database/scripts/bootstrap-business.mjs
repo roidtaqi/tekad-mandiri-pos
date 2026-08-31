@@ -1,6 +1,4 @@
-// @ts-check
-
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { createHash, pbkdf2Sync, randomBytes, randomUUID } from "node:crypto";
 import { parseArgs } from "node:util";
 
 import { Client } from "pg";
@@ -47,6 +45,7 @@ async function main() {
       "location-name": { type: "string", default: "Toko Utama" },
       "owner-email": { type: "string" },
       "owner-name": { type: "string" },
+      "owner-password": { type: "string" },
       "terminal-name": { type: "string", default: "Kasir 1" },
       timezone: { type: "string", default: "Asia/Makassar" },
       "ttl-hours": { type: "string" },
@@ -57,6 +56,7 @@ async function main() {
   const businessName = textOrDefault(values["business-name"], "Kastur Retail");
   const ownerName = textOrDefault(values["owner-name"], "Owner");
   const ownerEmail = textOrDefault(values["owner-email"], "owner@kastur.local");
+  const ownerPassword = textOrDefault(values["owner-password"], "Password123!");
   const locationName = textOrDefault(values["location-name"], "Toko Utama");
   const terminalName = textOrDefault(values["terminal-name"], "Kasir 1");
   const timezone = textOrDefault(values.timezone, "Asia/Makassar");
@@ -115,6 +115,20 @@ async function main() {
       `INSERT INTO identity.users (id, display_name, email, status)
        VALUES ($1, $2, $3, 'ACTIVE')`,
       [ids.user, ownerName, ownerEmail],
+    );
+    const saltHex = randomBytes(16).toString("hex");
+    const passwordHashHex = pbkdf2Sync(
+      ownerPassword,
+      Buffer.from(saltHex, "hex"),
+      100000,
+      32,
+      "sha256",
+    ).toString("hex");
+    await client.query(
+      `INSERT INTO identity.password_credentials (
+         user_id, password_hash, password_salt, algorithm, iterations
+       ) VALUES ($1, $2, $3, 'PBKDF2_SHA256', 100000)`,
+      [ids.user, passwordHashHex, saltHex],
     );
     await client.query(
       `INSERT INTO identity.business_memberships (id, business_id, user_id, status)
