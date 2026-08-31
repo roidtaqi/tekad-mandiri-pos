@@ -84,7 +84,7 @@ export interface PosRuntimeDependencies {
 
 export interface ConnectSessionInput {
   readonly bearer: string;
-  readonly terminalId: string;
+  readonly terminalId?: string;
 }
 
 export interface SubmitReturnInput {
@@ -260,18 +260,20 @@ export function PosRuntimeProvider({
   const connect = useCallback(
     async ({ bearer, terminalId: requestedTerminalId }: ConnectSessionInput): Promise<void> => {
       const cleanBearer = bearer.trim();
-      const cleanTerminalId = requestedTerminalId.trim();
-      if (cleanBearer === "" || cleanTerminalId === "") {
+      const cleanTerminalId = requestedTerminalId?.trim() ?? "";
+      if (cleanBearer === "") {
         setStatus("ERROR");
-        setError("Sesi pengguna dan ID terminal wajib diisi.");
+        setError("Sesi pengguna wajib diisi.");
         return;
       }
 
       setStatus("CONNECTING");
       setError(null);
       writeSessionBearer(cleanBearer);
-      writeTerminalId(cleanTerminalId);
-      setTerminalId(cleanTerminalId);
+      if (cleanTerminalId !== "") {
+        writeTerminalId(cleanTerminalId);
+        setTerminalId(cleanTerminalId);
+      }
       const cached = readCachedSession();
 
       try {
@@ -279,7 +281,7 @@ export function PosRuntimeProvider({
           config.apiBaseUrl,
           cleanBearer,
           deviceId,
-          cleanTerminalId,
+          cleanTerminalId === "" ? undefined : cleanTerminalId,
           fetchImplementation,
         );
         if (!auth.permissions.includes("workspace.pos.access")) {
@@ -289,12 +291,18 @@ export function PosRuntimeProvider({
             "PERMISSION_DENIED",
           );
         }
-        const runtime = createSyncRuntime(auth.membership.business_id, cleanTerminalId);
+        const effectiveTerminalId = cleanTerminalId !== "" ? cleanTerminalId : "";
+        const runtime = createSyncRuntime(auth.membership.business_id, effectiveTerminalId);
         await runtime.orchestrator.bootstrap();
         const context = runtime.adapter.getLatestBootstrapContext();
-        if (context === null || context.terminal.id !== cleanTerminalId) {
+        if (context === null) {
+          throw new Error("Bootstrap tidak mengembalikan konteks terminal.");
+        }
+        if (cleanTerminalId !== "" && context.terminal.id !== cleanTerminalId) {
           throw new Error("Bootstrap tidak mengembalikan terminal yang dipilih.");
         }
+        writeTerminalId(context.terminal.id);
+        setTerminalId(context.terminal.id);
         if (
           config.offlineAuthorizationVerification !== null &&
           context.auth.offline_authorization !== undefined

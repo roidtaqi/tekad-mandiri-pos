@@ -7,6 +7,7 @@ import {
   authenticateRecoveryRequest,
   authenticateRequest,
   revokeCurrentSession,
+  sha256Hex,
 } from "./auth.js";
 import { queryBackofficeResource } from "./backoffice.js";
 import {
@@ -49,7 +50,8 @@ function isDatabaseRoute(pathname: string): boolean {
     pathname.startsWith("/api/v1/catalog/") ||
     pathname.startsWith("/api/v1/returns/") ||
     pathname === "/api/v1/commands" ||
-    pathname.startsWith("/api/v1/sync/")
+    pathname.startsWith("/api/v1/sync/") ||
+    pathname.startsWith("/api/v1/system/setup")
   );
 }
 
@@ -68,6 +70,20 @@ async function routeAuthenticatedRequest(
   if (request.method === "POST" && pathname === "/api/v1/auth/logout") {
     await revokeCurrentSession(database, context);
     return new Response(null, { headers: jsonHeaders, status: 204 });
+  }
+  if (request.method === "GET" && pathname === "/api/v1/auth/terminals") {
+    const terminals = await database.query(
+      `SELECT t.id, t.name, t.code, t.status, t.location_id, l.name AS location_name
+       FROM core.terminals t
+       JOIN core.locations l ON l.id = t.location_id
+       WHERE t.business_id = $1 AND t.status = 'ACTIVE'
+       ORDER BY t.created_at ASC`,
+      [context.authorization.membership.business_id],
+    );
+    return json({
+      data: terminals.rows,
+      meta: { server_time: new Date().toISOString() },
+    });
   }
   const backofficeMatch = pathname.match(/^\/api\/v1\/backoffice\/([^/]+)$/u);
   if (request.method === "GET" && backofficeMatch?.[1] !== undefined) {
@@ -193,6 +209,201 @@ async function routeRecoveryPush(
   return json(result);
 }
 
+const OWNER_ROLE_ID = "11111111-1111-4111-8111-111111111111";
+
+async function routeSystemSetup(
+  request: Request,
+  database: RequestDatabase,
+  url: URL,
+): Promise<Response> {
+  const { pathname } = url;
+
+  if (request.method === "GET" && pathname === "/api/v1/system/setup/status") {
+    const existing = await database.query(
+      `SELECT count(*)::int AS count FROM core.businesses WHERE status = 'ACTIVE'`,
+    );
+    const count = typeof existing.rows[0]?.count === "number" ? existing.rows[0].count : 0;
+    return json({
+      initialized: count > 0,
+      status: count > 0 ? "INITIALIZED" : "NOT_INITIALIZED",
+    });
+  }
+
+  if (request.method === "POST" && pathname === "/api/v1/system/setup") {
+    return await database.transaction(async (tx) => {
+      const existing = await tx.query(
+        `SELECT count(*)::int AS count FROM core.businesses WHERE status = 'ACTIVE'`,
+      );
+      const count = typeof existing.rows[0]?.count === "number" ? existing.rows[0].count : 0;
+      if (count > 0) {
+        throw new ApiError(
+          409,
+          "ALREADY_INITIALIZED",
+          "Bisnis sudah diinisialisasi pada sistem ini.",
+        );
+      }
+
+      const body = await readJsonObject(request);
+      const businessName =
+        typeof body.business_name === "string" && body.business_name.trim() !== ""
+          ? body.business_name.trim()
+          : "Kastur Retail";
+      const ownerName =
+        typeof body.owner_name === "string" && body.owner_name.trim() !== ""
+          ? body.owner_name.trim()
+          : "Owner";
+      const ownerEmail =
+        typeof body.owner_email === "string" && body.owner_email.trim() !== ""
+          ? body.owner_email.trim()
+          : "owner@kastur.local";
+      const locationName =
+        typeof body.location_name === "string" && body.location_name.trim() !== ""
+          ? body.location_name.trim()
+          : "Toko Utama";
+      const terminalName =
+        typeof body.terminal_name === "string" && body.terminal_name.trim() !== ""
+          ? body.terminal_name.trim()
+          : "Kasir 1";
+      const timezone =
+        typeof body.timezone === "string" && body.timezone.trim() !== ""
+          ? body.timezone.trim()
+          : "Asia/Makassar";
+
+      const businessId = crypto.randomUUID();
+      const locationId = crypto.randomUUID();
+      const ownerUserId = crypto.randomUUID();
+      const membershipId = crypto.randomUUID();
+      const deviceId = crypto.randomUUID();
+      const terminalId = crypto.randomUUID();
+      const paymentMethodId = crypto.randomUUID();
+      const categoryId = crypto.randomUUID();
+      const sessionId = crypto.randomUUID();
+      const auditId = crypto.randomUUID();
+      const correlationId = crypto.randomUUID();
+
+      const sessionSecretBytes = new Uint8Array(32);
+      crypto.getRandomValues(sessionSecretBytes);
+      const sessionSecret = btoa(String.fromCharCode(...sessionSecretBytes))
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/, "");
+      const sessionHash = await sha256Hex(sessionSecret);
+
+      await tx.query(
+        `INSERT INTO core.businesses (id, name, currency_code, timezone, status)
+         VALUES ($1, $2, 'IDR', $3, 'ACTIVE')`,
+        [businessId, businessName, timezone],
+      );
+
+      await tx.query(
+        `INSERT INTO core.locations (id, business_id, code, name, type, is_default, status)
+         VALUES ($1, $2, 'MAIN', $3, 'STORE', TRUE, 'ACTIVE')`,
+        [locationId, businessId, locationName],
+      );
+
+      await tx.query(
+        `INSERT INTO identity.users (id, display_name, email, status)
+         VALUES ($1, $2, $3, 'ACTIVE')`,
+        [ownerUserId, ownerName, ownerEmail],
+      );
+
+      await tx.query(
+        `INSERT INTO identity.business_memberships (id, business_id, user_id, status)
+         VALUES ($1, $2, $3, 'ACTIVE')`,
+        [membershipId, businessId, ownerUserId],
+      );
+
+      await tx.query(
+        `INSERT INTO identity.membership_roles (membership_id, role_id, is_primary, assigned_by)
+         VALUES ($1, $2, TRUE, $3)`,
+        [membershipId, OWNER_ROLE_ID, ownerUserId],
+      );
+
+      await tx.query(
+        `INSERT INTO identity.authorization_versions (membership_id, version)
+         VALUES ($1, 1)`,
+        [membershipId],
+      );
+
+      await tx.query(
+        `INSERT INTO identity.devices (id, business_id, code, display_name, device_type, status)
+         VALUES ($1, $2, $3, $4, 'PWA', 'ACTIVE')`,
+        [deviceId, businessId, `DEV-${deviceId.slice(0, 8)}`, terminalName],
+      );
+
+      await tx.query(
+        `INSERT INTO core.terminals (id, business_id, location_id, code, name, status)
+         VALUES ($1, $2, $3, 'POS-1', $4, 'ACTIVE')`,
+        [terminalId, businessId, locationId, terminalName],
+      );
+
+      await tx.query(
+        `INSERT INTO sales.payment_methods (id, business_id, code, name, is_cash, offline_allowed, requires_reference, status)
+         VALUES ($1, $2, 'CASH', 'Tunai', TRUE, TRUE, FALSE, 'ACTIVE')`,
+        [paymentMethodId, businessId],
+      );
+
+      await tx.query(
+        `INSERT INTO catalog.categories (id, business_id, code, name, status)
+         VALUES ($1, $2, 'GENERAL', 'Umum', 'ACTIVE')`,
+        [categoryId, businessId],
+      );
+
+      await tx.query(
+        `INSERT INTO identity.sessions (id, user_id, business_id, device_id, session_secret_hash, issued_at, expires_at)
+         VALUES ($1, $2, $3, NULL, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '30 days')`,
+        [sessionId, ownerUserId, businessId, sessionHash],
+      );
+
+      await tx.query(
+        `INSERT INTO audit.audit_events (
+           id, business_id, location_id, actor_type, actor_user_id,
+           actor_role_snapshot, action, entity_type, entity_id, occurred_at,
+           device_id, session_id, reason, after_data, correlation_id,
+           authorization_version
+         ) VALUES (
+           $1, $2, $3, 'USER', $4, 'OWNER', 'BUSINESS_BOOTSTRAPPED',
+           'business', $2, CURRENT_TIMESTAMP, $5, $6,
+           'Initial system setup via API', $7::jsonb, $8, 1
+         )`,
+        [
+          auditId,
+          businessId,
+          locationId,
+          ownerUserId,
+          deviceId,
+          sessionId,
+          JSON.stringify({
+            business_name: businessName,
+            location_id: locationId,
+            terminal_id: terminalId,
+          }),
+          correlationId,
+        ],
+      );
+
+      return json(
+        {
+          business_id: businessId,
+          business_name: businessName,
+          location_id: locationId,
+          location_name: locationName,
+          message: "Bisnis awal berhasil diinisialisasi.",
+          owner_email: ownerEmail,
+          owner_name: ownerName,
+          owner_user_id: ownerUserId,
+          session_secret: sessionSecret,
+          terminal_id: terminalId,
+          terminal_name: terminalName,
+        },
+        { status: 201 },
+      );
+    });
+  }
+
+  throw new ApiError(404, "NOT_FOUND", "Endpoint tidak ditemukan.");
+}
+
 export async function handleRequest(
   request: Request,
   environment: ApiEnvironment = {},
@@ -200,7 +411,20 @@ export async function handleRequest(
 ): Promise<Response> {
   const url = new URL(request.url);
 
-  if (request.method === "GET" && url.pathname === SYSTEM_HEALTH_PATH) {
+  if (request.method === "OPTIONS") {
+    const headers = new Headers(jsonHeaders);
+    headers.set("access-control-max-age", "86400");
+    return new Response(null, {
+      headers,
+      status: 204,
+    });
+  }
+  if (
+    request.method === "GET" &&
+    (url.pathname === SYSTEM_HEALTH_PATH ||
+      url.pathname === "/health" ||
+      url.pathname === "/api/health")
+  ) {
     const body = { status: "ok" } satisfies SystemHealthResponse;
     return json(body);
   }
@@ -223,6 +447,9 @@ export async function handleRequest(
     if (database === undefined) {
       database = new PgRequestDatabase(environment);
       ownsDatabase = true;
+    }
+    if (url.pathname.startsWith("/api/v1/system/setup")) {
+      return await routeSystemSetup(request, database, url);
     }
     if (
       request.method === "POST" &&

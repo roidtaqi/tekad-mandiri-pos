@@ -4,6 +4,7 @@ import type { AuthContextResponse } from "@kastur/contracts";
 import { Button, EmptyState, Spinner } from "@kastur/ui";
 
 import { AuthContext } from "../features/auth/AuthContext";
+import { FirstRunSetup } from "../features/auth/FirstRunSetup";
 import { SessionEntry } from "../features/auth/SessionEntry";
 import { HttpCatalogGateway } from "../features/catalog/HttpCatalogGateway";
 import { fetchAuthContext } from "./auth-api";
@@ -23,6 +24,14 @@ import {
   type SessionStorageLike,
   writeSessionBearer,
 } from "./session";
+
+const defaultApiBaseUrl =
+  typeof import.meta !== "undefined" &&
+  typeof import.meta.env !== "undefined" &&
+  typeof import.meta.env.VITE_API_BASE_URL === "string" &&
+  import.meta.env.VITE_API_BASE_URL.trim() !== ""
+    ? import.meta.env.VITE_API_BASE_URL.trim()
+    : undefined;
 
 export interface BackofficeRuntimeOptions {
   readonly apiBaseUrl?: string;
@@ -65,10 +74,13 @@ export function BackofficeCompositionRoot({
   children,
   options = {},
 }: BackofficeCompositionRootProps) {
+  const effectiveApiBaseUrl = options.apiBaseUrl ?? defaultApiBaseUrl;
   const storage = options.sessionStorage ?? browserSessionStorage();
   const initialBearerRef = useRef<string | null>(readSessionBearer(storage));
   const generationRef = useRef(0);
   const [state, setState] = useState<SessionState>({ status: "checking" });
+  const [setupRequired, setSetupRequired] = useState(false);
+  const [showManualLogin, setShowManualLogin] = useState(false);
 
   const verify = useCallback(
     async (input: string, persist: boolean) => {
@@ -87,7 +99,7 @@ export function BackofficeCompositionRoot({
 
       const client = new AuthenticatedHttpClient({
         bearer,
-        ...(options.apiBaseUrl === undefined ? {} : { apiBaseUrl: options.apiBaseUrl }),
+        ...(effectiveApiBaseUrl === undefined ? {} : { apiBaseUrl: effectiveApiBaseUrl }),
         ...(options.fetchImplementation === undefined
           ? {}
           : { fetchImplementation: options.fetchImplementation }),
@@ -116,17 +128,33 @@ export function BackofficeCompositionRoot({
         }
       }
     },
-    [options.apiBaseUrl, options.fetchImplementation, storage],
+    [effectiveApiBaseUrl, options.fetchImplementation, storage],
   );
 
   useEffect(() => {
     const initialBearer = initialBearerRef.current;
     if (initialBearer === null) {
       setState({ status: "signed-out" });
+      const baseUrl = effectiveApiBaseUrl ?? "";
+      const statusUrl = `${baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl}/api/v1/system/setup/status`;
+      const fetchImpl = options.fetchImplementation ?? fetch;
+      fetchImpl(statusUrl, { headers: { Accept: "application/json" } })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data: unknown) => {
+          if (
+            typeof data === "object" &&
+            data !== null &&
+            "initialized" in data &&
+            (data as { initialized: boolean }).initialized === false
+          ) {
+            setSetupRequired(true);
+          }
+        })
+        .catch(() => undefined);
       return;
     }
     void verify(initialBearer, false);
-  }, [verify]);
+  }, [effectiveApiBaseUrl, options.fetchImplementation, verify]);
 
   if (state.status === "checking") {
     return (
@@ -137,6 +165,16 @@ export function BackofficeCompositionRoot({
   }
 
   if (state.status === "signed-out") {
+    if (setupRequired && !showManualLogin) {
+      return (
+        <FirstRunSetup
+          apiBaseUrl={effectiveApiBaseUrl}
+          onCancel={() => setShowManualLogin(true)}
+          onComplete={(bearer) => void verify(bearer, true)}
+        />
+      );
+    }
+
     return (
       <SessionEntry
         {...(state.errorMessage === undefined ? {} : { errorMessage: state.errorMessage })}

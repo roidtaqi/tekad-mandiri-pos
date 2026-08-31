@@ -10,19 +10,21 @@ import { requireDatabaseUrl, safeErrorMessage } from "./migrations.mjs";
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
-/** @param {string | undefined} value @param {string} name */
-function requireUuid(value, name) {
-  if (value === undefined || !UUID_PATTERN.test(value)) {
-    throw new Error(`${name} must be an explicit UUID.`);
+/** @param {string | boolean | undefined} value @param {string} name */
+function optionalUuid(value, name) {
+  if (typeof value !== "string" || value.trim() === "") return undefined;
+  if (!UUID_PATTERN.test(value.trim())) {
+    throw new Error(`${name} must be a valid UUID.`);
   }
-  return value;
+  return value.trim();
 }
 
-/** @param {string | undefined} value */
+/** @param {string | boolean | undefined} value */
 function parseTtlHours(value) {
-  const ttl = value === undefined ? 12 : Number(value);
-  if (!Number.isSafeInteger(ttl) || ttl < 1 || ttl > 720) {
-    throw new Error("--ttl-hours must be an integer from 1 through 720.");
+  if (value === undefined || typeof value === "boolean") return 720;
+  const ttl = Number(value);
+  if (!Number.isSafeInteger(ttl) || ttl < 1 || ttl > 8760) {
+    throw new Error("--ttl-hours must be an integer from 1 through 8760 (up to 365 days).");
   }
   return ttl;
 }
@@ -36,11 +38,12 @@ async function main() {
       "ttl-hours": { type: "string" },
       "user-id": { type: "string" },
     },
-    strict: true,
+    strict: false,
   });
-  const businessId = requireUuid(values["business-id"], "--business-id");
-  const deviceId = requireUuid(values["device-id"], "--device-id");
-  const userId = requireUuid(values["user-id"], "--user-id");
+
+  const explicitBusinessId = optionalUuid(values["business-id"], "--business-id");
+  const explicitDeviceId = optionalUuid(values["device-id"], "--device-id");
+  const explicitUserId = optionalUuid(values["user-id"], "--user-id");
   const ttlHours = parseTtlHours(values["ttl-hours"]);
   const databaseUrl = requireDatabaseUrl();
   const sessionSecret = randomBytes(32).toString("base64url");
@@ -48,22 +51,62 @@ async function main() {
   const sessionId = randomUUID();
   const client = new Client({ connectionString: databaseUrl });
 
+  let businessId = explicitBusinessId;
+  let userId = explicitUserId;
+  let userName = "User";
+
   try {
     await client.connect();
     await client.query("BEGIN");
-    const context = await client.query(
-      `SELECT m.id AS membership_id, d.status AS device_status
-       FROM identity.business_memberships m
-       JOIN identity.users u ON u.id = m.user_id
-       JOIN identity.devices d ON d.id = $3 AND d.business_id = m.business_id
-       WHERE m.business_id = $1 AND m.user_id = $2
-         AND m.status = 'ACTIVE' AND u.status = 'ACTIVE'
-       FOR UPDATE`,
-      [businessId, userId, deviceId],
-    );
-    if (context.rowCount !== 1 || context.rows[0]?.device_status !== "ACTIVE") {
-      throw new Error("Active membership and active same-business device are required.");
+
+    // Auto-resolve business if not specified
+    if (!businessId) {
+      const businessRes = await client.query(
+        `SELECT id, name FROM core.businesses WHERE status = 'ACTIVE' ORDER BY created_at ASC LIMIT 1`,
+      );
+      if (businessRes.rowCount === 0) {
+        throw new Error("No active business found in database. Run bootstrap first.");
+      }
+      businessId = businessRes.rows[0].id;
     }
+
+    // Auto-resolve user if not specified
+    if (!userId) {
+      const userRes = await client.query(
+        `SELECT u.id, u.display_name
+         FROM identity.users u
+         JOIN identity.business_memberships m ON m.user_id = u.id
+         WHERE m.business_id = $1 AND u.status = 'ACTIVE' AND m.status = 'ACTIVE'
+         ORDER BY m.created_at ASC LIMIT 1`,
+        [businessId],
+      );
+      if (userRes.rowCount === 0) {
+        throw new Error("No active user found for this business.");
+      }
+      userId = userRes.rows[0].id;
+      userName = userRes.rows[0].display_name;
+    } else {
+      const userRes = await client.query(
+        `SELECT u.display_name FROM identity.users u WHERE u.id = $1`,
+        [userId],
+      );
+      if (userRes.rowCount && userRes.rowCount > 0) {
+        userName = userRes.rows[0].display_name;
+      }
+    }
+
+    // Handle device
+    let deviceId = explicitDeviceId || null;
+    if (deviceId) {
+      // Check or register device
+      await client.query(
+        `INSERT INTO identity.devices (id, business_id, code, display_name, device_type, status)
+         VALUES ($1, $2, $3, 'POS Terminal', 'PWA', 'ACTIVE')
+         ON CONFLICT (id) DO UPDATE SET last_seen_at = CURRENT_TIMESTAMP WHERE identity.devices.business_id = $2`,
+        [deviceId, businessId, `DEV-${deviceId.slice(0, 8)}`],
+      );
+    }
+
     await client.query(
       `INSERT INTO identity.sessions (
          id, user_id, business_id, device_id, session_secret_hash,
@@ -80,20 +123,19 @@ async function main() {
     await client.end();
   }
 
-  process.stdout.write(
-    `${JSON.stringify(
-      {
-        business_id: businessId,
-        device_id: deviceId,
-        expires_in_hours: ttlHours,
-        session_id: sessionId,
-        session_secret: sessionSecret,
-        user_id: userId,
-      },
-      null,
-      2,
-    )}\n`,
-  );
+  process.stdout.write(`
+============================================================
+  KASTUR RETAIL SYSTEM v2 — SESSION ISSUED
+============================================================
+  User:         ${userName} (${userId})
+  Business ID:  ${businessId}
+  Device ID:    ${explicitDeviceId || "Unbound (auto-binds on first POS login or valid for Back Office)"}
+  Valid for:    ${ttlHours} hours (${Math.round(ttlHours / 24)} days)
+
+  🔑 SESSION SECRET:
+  ${sessionSecret}
+============================================================
+`);
 }
 
 main().catch((error) => {

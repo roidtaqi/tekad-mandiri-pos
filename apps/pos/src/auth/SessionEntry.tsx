@@ -82,14 +82,13 @@ export function SessionEntry({ overlay = false }: { readonly overlay?: boolean }
             </Field>
           ) : (
             <Field
-              label="ID terminal"
-              description={`Perangkat lokal: ${runtime.deviceId}`}
-              required
+              description={`Perangkat lokal: ${runtime.deviceId}. Kosongkan untuk memilih terminal aktif secara otomatis.`}
+              label="Terminal (opsional)"
             >
               <Input
                 name="terminal-id"
                 onChange={(event) => setTerminalId(event.currentTarget.value)}
-                placeholder="UUID terminal yang aktif"
+                placeholder="Otomatis (Kasir 1) atau masukkan UUID"
                 spellCheck={false}
                 value={terminalId}
               />

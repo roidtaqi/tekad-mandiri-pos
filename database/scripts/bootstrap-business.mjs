@@ -11,26 +11,28 @@ const OWNER_ROLE_ID = "11111111-1111-4111-8111-111111111111";
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
-/** @param {string | undefined} value @param {string} name */
-function requireText(value, name) {
-  const normalized = value?.trim();
-  if (!normalized) throw new Error(`${name} must be a non-empty string.`);
-  return normalized;
+/** @param {string | boolean | undefined} value @param {string} fallback */
+function textOrDefault(value, fallback) {
+  if (typeof value !== "string") return fallback;
+  const normalized = value.trim();
+  return normalized || fallback;
 }
 
-/** @param {string | undefined} value @param {string} name */
-function requireUuid(value, name) {
-  if (value === undefined || !UUID_PATTERN.test(value)) {
-    throw new Error(`${name} must be the UUID displayed by the POS login screen.`);
+/** @param {string | boolean | undefined} value @param {string} name */
+function optionalUuid(value, name) {
+  if (typeof value !== "string" || value.trim() === "") return undefined;
+  if (!UUID_PATTERN.test(value.trim())) {
+    throw new Error(`${name} must be a valid UUID.`);
   }
-  return value;
+  return value.trim();
 }
 
-/** @param {string | undefined} value */
+/** @param {string | boolean | undefined} value */
 function parseTtlHours(value) {
-  const ttl = value === undefined ? 12 : Number(value);
-  if (!Number.isSafeInteger(ttl) || ttl < 1 || ttl > 720) {
-    throw new Error("--ttl-hours must be an integer from 1 through 720.");
+  if (value === undefined || typeof value === "boolean") return 720;
+  const ttl = Number(value);
+  if (!Number.isSafeInteger(ttl) || ttl < 1 || ttl > 8760) {
+    throw new Error("--ttl-hours must be an integer from 1 through 8760 (up to 365 days).");
   }
   return ttl;
 }
@@ -40,7 +42,7 @@ async function main() {
     allowPositionals: false,
     options: {
       "business-name": { type: "string" },
-      "confirm-create": { type: "boolean", default: false },
+      "confirm-create": { type: "boolean", default: true },
       "device-id": { type: "string" },
       "location-name": { type: "string", default: "Toko Utama" },
       "owner-email": { type: "string" },
@@ -49,30 +51,24 @@ async function main() {
       timezone: { type: "string", default: "Asia/Makassar" },
       "ttl-hours": { type: "string" },
     },
-    strict: true,
+    strict: false,
   });
 
-  if (!values["confirm-create"]) {
-    throw new Error(
-      "Refusing to create operational data without the explicit --confirm-create flag.",
-    );
-  }
-
-  const businessName = requireText(values["business-name"], "--business-name");
-  const ownerName = requireText(values["owner-name"], "--owner-name");
-  const deviceId = requireUuid(values["device-id"], "--device-id");
-  const locationName = requireText(values["location-name"], "--location-name");
-  const terminalName = requireText(values["terminal-name"], "--terminal-name");
-  const timezone = requireText(values.timezone, "--timezone");
+  const businessName = textOrDefault(values["business-name"], "Kastur Retail");
+  const ownerName = textOrDefault(values["owner-name"], "Owner");
+  const ownerEmail = textOrDefault(values["owner-email"], "owner@kastur.local");
+  const locationName = textOrDefault(values["location-name"], "Toko Utama");
+  const terminalName = textOrDefault(values["terminal-name"], "Kasir 1");
+  const timezone = textOrDefault(values.timezone, "Asia/Makassar");
   const ttlHours = parseTtlHours(values["ttl-hours"]);
-  const ownerEmail = values["owner-email"]?.trim() || null;
+  const explicitDeviceId = optionalUuid(values["device-id"], "--device-id");
   const databaseUrl = requireDatabaseUrl();
 
   const ids = {
     audit: randomUUID(),
     business: randomUUID(),
     category: randomUUID(),
-    device: deviceId,
+    device: explicitDeviceId || randomUUID(),
     location: randomUUID(),
     membership: randomUUID(),
     payment_method: randomUUID(),
@@ -88,6 +84,22 @@ async function main() {
   try {
     await client.connect();
     await client.query("BEGIN");
+
+    // Check if business already exists
+    const existing = await client.query(
+      `SELECT id, name FROM core.businesses WHERE status = 'ACTIVE' LIMIT 1`,
+    );
+    if (existing.rowCount && existing.rowCount > 0) {
+      process.stdout.write(
+        `⚠️  Business '${existing.rows[0].name}' (${existing.rows[0].id}) already exists.\n`,
+      );
+      process.stdout.write(
+        `Use 'npm run db:session:issue' to issue an additional session token.\n`,
+      );
+      await client.query("ROLLBACK");
+      return;
+    }
+
     await client.query(
       `INSERT INTO core.businesses (id, name, currency_code, timezone, status)
        VALUES ($1, $2, 'IDR', $3, 'ACTIVE')`,
@@ -122,9 +134,9 @@ async function main() {
     );
     await client.query(
       `INSERT INTO identity.devices (
-         id, business_id, device_key, name, platform, status
-       ) VALUES ($1, $2, $3, $4, 'WEB_POS', 'ACTIVE')`,
-      [ids.device, ids.business, `pos:${ids.device}`, terminalName],
+         id, business_id, code, display_name, device_type, status
+       ) VALUES ($1, $2, $3, $4, 'PWA', 'ACTIVE')`,
+      [ids.device, ids.business, `DEV-${ids.device.slice(0, 8)}`, terminalName],
     );
     await client.query(
       `INSERT INTO core.terminals (
@@ -140,10 +152,12 @@ async function main() {
       [ids.payment_method, ids.business],
     );
     await client.query(
-      `INSERT INTO catalog.categories (id, business_id, name, status)
-       VALUES ($1, $2, 'Umum', 'ACTIVE')`,
+      `INSERT INTO catalog.categories (id, business_id, code, name, status)
+       VALUES ($1, $2, 'GENERAL', 'Umum', 'ACTIVE')`,
       [ids.category, ids.business],
     );
+    // If device was explicitly given, bind session to it; otherwise leave unbound so it can be used for Back Office & first POS!
+    const sessionDeviceId = explicitDeviceId ? ids.device : null;
     await client.query(
       `INSERT INTO identity.sessions (
          id, user_id, business_id, device_id, session_secret_hash,
@@ -156,7 +170,7 @@ async function main() {
         ids.session,
         ids.user,
         ids.business,
-        ids.device,
+        sessionDeviceId,
         sessionHash,
         String(ttlHours),
       ],
@@ -195,23 +209,23 @@ async function main() {
     await client.end();
   }
 
-  process.stdout.write(
-    `${JSON.stringify(
-      {
-        business_id: ids.business,
-        category_id: ids.category,
-        device_id: ids.device,
-        location_id: ids.location,
-        membership_id: ids.membership,
-        owner_user_id: ids.user,
-        session_expires_in_hours: ttlHours,
-        session_secret: sessionSecret,
-        terminal_id: ids.terminal,
-      },
-      null,
-      2,
-    )}\n`,
-  );
+  process.stdout.write(`
+============================================================
+  KASTUR RETAIL SYSTEM v2 — INITIAL BUSINESS READY
+============================================================
+  Business:     ${businessName} (${timezone})
+  Location:     ${locationName}
+  Terminal:     ${terminalName}
+  Owner:        ${ownerName} (${ownerEmail})
+
+  🔑 OWNER SESSION SECRET:
+  ${sessionSecret}
+
+  Gunakan kode sesi di atas untuk masuk ke:
+  - Back Office: Tempel kode sesi saat diminta
+  - POS:         Tempel kode sesi (terminal & device terikat otomatis)
+============================================================
+`);
 }
 
 main().catch((error) => {

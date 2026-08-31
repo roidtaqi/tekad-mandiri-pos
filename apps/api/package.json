@@ -4,8 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.json --noEmit && wrangler deploy --dry-run --outfile dist/worker.js --config wrangler.jsonc",
+    "build": "tsc -p tsconfig.json --noEmit && wrangler deploy --dry-run --outfile dist/worker.js --config wrangler.jsonc && vite build --ssr src/index.ts --outDir dist --emptyOutDir false --target node22",
     "dev": "wrangler dev --local --config wrangler.jsonc",
+    "start": "node ../../tooling/scripts/start-api-server.mjs",
     "test": "vitest run --config ../../vitest.config.ts --project api",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "types:check": "wrangler types worker-configuration.d.ts --check --config wrangler.jsonc",

@@ -46,17 +46,20 @@ export async function fetchAuthContext(
   apiBaseUrl: string,
   bearer: string,
   deviceId: string,
-  terminalId: string,
+  terminalId?: string,
   fetchImplementation: typeof fetch = fetch,
 ): Promise<AuthContextResponse> {
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    Authorization: `Bearer ${bearer}`,
+    "X-Kastur-Client": "pos",
+    "X-Kastur-Device-Id": deviceId,
+  };
+  if (terminalId !== undefined && terminalId.trim() !== "") {
+    headers["X-Terminal-Id"] = terminalId.trim();
+  }
   const response = await fetchImplementation(new URL("/api/v1/auth/context", apiBaseUrl), {
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${bearer}`,
-      "X-Kastur-Device-Id": deviceId,
-      "X-Kastur-Client": "pos",
-      "X-Terminal-Id": terminalId,
-    },
+    headers,
   });
   const body: unknown = await response.json().catch(() => null);
   if (!response.ok) {

@@ -49,4 +49,27 @@ describe("system health endpoint", () => {
       },
     });
   });
+
+  it("responds to root /health endpoint with 200 ok", async () => {
+    const response = await worker.fetch(
+      new Request("https://api.kastur.test/health"),
+      {},
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ status: "ok" });
+  });
+
+  it("responds to OPTIONS CORS preflight with 204", async () => {
+    const response = await worker.fetch(
+      new Request("https://api.kastur.test/api/v1/auth/context", {
+        method: "OPTIONS",
+      }),
+      {},
+    );
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+    expect(response.headers.get("access-control-allow-methods")).toContain("GET");
+  });
 });

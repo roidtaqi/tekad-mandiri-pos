@@ -1,8 +1,12 @@
 export const jsonHeaders = {
+  "access-control-allow-headers":
+    "content-type, authorization, x-kastur-client, x-kastur-device-id, x-kastur-terminal-id, x-terminal-id",
+  "access-control-allow-methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
+  "access-control-allow-origin": "*",
   "cache-control": "no-store",
   "content-security-policy": "default-src 'none'; base-uri 'none'; frame-ancestors 'none'",
   "content-type": "application/json; charset=utf-8",
-  "cross-origin-resource-policy": "same-origin",
+  "cross-origin-resource-policy": "cross-origin",
   "permissions-policy": "camera=(), microphone=(), geolocation=()",
   "referrer-policy": "no-referrer",
   "x-content-type-options": "nosniff",

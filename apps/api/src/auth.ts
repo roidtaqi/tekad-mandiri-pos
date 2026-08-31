@@ -215,7 +215,7 @@ export async function authenticateRequest(
      LIMIT 1`,
     [sessionSecretHash],
   );
-  const session = sessionResult.rows[0];
+  let session = sessionResult.rows[0];
 
   if (session === undefined) {
     throw new ApiError(401, "SESSION_INVALID", "Sesi tidak valid atau sudah berakhir.");
@@ -230,13 +230,35 @@ export async function authenticateRequest(
   const requestDeviceId = request.headers.get("x-kastur-device-id");
   if (requestClient === "pos") {
     if (session.session_device_id === null) {
-      throw new ApiError(
-        403,
-        "DEVICE_BINDING_REQUIRED",
-        "Sesi POS wajib terikat ke perangkat aktif.",
-      );
-    }
-    if (requestDeviceId !== session.session_device_id) {
+      if (
+        requestDeviceId !== null &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+          requestDeviceId,
+        )
+      ) {
+        await executor.query(
+          `INSERT INTO identity.devices (id, business_id, code, display_name, device_type, status)
+           VALUES ($1, $2, $3, 'POS Terminal', 'PWA', 'ACTIVE')
+           ON CONFLICT (id) DO UPDATE SET last_seen_at = CURRENT_TIMESTAMP WHERE identity.devices.business_id = $2`,
+          [requestDeviceId, session.business_id, `DEV-${requestDeviceId.slice(0, 8)}`],
+        );
+        await executor.query(
+          `UPDATE identity.sessions SET device_id = $1 WHERE id = $2`,
+          [requestDeviceId, session.session_id],
+        );
+        session = {
+          ...session,
+          device_status: "ACTIVE",
+          session_device_id: requestDeviceId,
+        };
+      } else {
+        throw new ApiError(
+          403,
+          "DEVICE_BINDING_REQUIRED",
+          "Sesi POS wajib terikat ke perangkat aktif.",
+        );
+      }
+    } else if (requestDeviceId !== session.session_device_id) {
       throw new ApiError(
         403,
         "DEVICE_CONTEXT_MISMATCH",
@@ -251,13 +273,31 @@ export async function authenticateRequest(
       "Lokasi atau peran utama belum dikonfigurasi.",
     );
   }
+  let resolvedTerminalId = selectedTerminalId;
   if (requestClient === "pos") {
-    await requireActiveTerminal(
-      executor,
-      session.business_id,
-      session.default_location_id,
-      selectedTerminalId,
-    );
+    if (resolvedTerminalId === null) {
+      const defaultTerminal = await executor.query<{ readonly id: string }>(
+        `SELECT id FROM core.terminals
+         WHERE business_id = $1 AND location_id = $2 AND status = 'ACTIVE'
+         ORDER BY code ASC LIMIT 1`,
+        [session.business_id, session.default_location_id],
+      );
+      if (defaultTerminal.rows[0] === undefined) {
+        throw new ApiError(
+          403,
+          "TERMINAL_CONTEXT_REQUIRED",
+          "Sesi POS wajib memilih terminal aktif.",
+        );
+      }
+      resolvedTerminalId = defaultTerminal.rows[0].id;
+    } else {
+      await requireActiveTerminal(
+        executor,
+        session.business_id,
+        session.default_location_id,
+        resolvedTerminalId,
+      );
+    }
   }
 
   const permissionResult = await executor.query<PermissionRow>(
@@ -335,7 +375,7 @@ export async function authenticateRequest(
     },
     device_id: session.session_device_id,
     membership_id: session.membership_id,
-    selected_terminal_id: selectedTerminalId,
+    selected_terminal_id: resolvedTerminalId,
     session_id: session.session_id,
   };
   const offlineAuthorization = await issueOfflineAuthorizationGrant(environment, context);
